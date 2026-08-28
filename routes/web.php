@@ -1,6 +1,7 @@
 <?php
 
 use App\Http\Controllers\TwoFactorEnrollmentController;
+use App\Http\Controllers\TwoFactorSettingsController;
 use Illuminate\Support\Facades\Route;
 
 /**
@@ -21,3 +22,13 @@ Route::get('/', function () {
 Route::get('two-factor-enrollment', TwoFactorEnrollmentController::class)
     ->middleware('auth')
     ->name('two-factor.enroll');
+
+/**
+ * Maintenance for an account already enrolled. `password.confirm` because the page
+ * displays recovery codes: Fortify guards its own two-factor endpoints that way
+ * (`'confirmPassword' => true`), and rendering the same secrets on a page it does not
+ * own would otherwise be the cheaper route to them.
+ */
+Route::get('two-factor-settings', TwoFactorSettingsController::class)
+    ->middleware(['auth', 'password.confirm'])
+    ->name('two-factor.settings');

@@ -81,7 +81,7 @@ class CreateUser extends Command
     {
         if (! Route::has('password.reset')) {
             $this->components->warn('No password-set link sent: this application has no password reset route yet.');
-            $this->components->warn("Once it exists, run: php artisan users:invite {$user->email}");
+            $this->components->warn("The account exists but has no usable password. Once the route is back, {$user->email} can set one from the sign-in page's forgot-password link.");
 
             return;
         }
