@@ -49,7 +49,7 @@ test('a recovery code completes the challenge', function () {
     $this->post('/login', ['login' => $user->email, 'password' => 'password']);
 
     $this->post(route('two-factor.login.store'), ['recovery_code' => $recoveryCode])
-        ->assertRedirect('/');
+        ->assertRedirect(route('account.security'));
 
     $this->assertAuthenticatedAs($user);
 });
@@ -81,7 +81,7 @@ test('an un-enrolled user still reaches the enrollment gate, not the challenge',
     $this->post('/login', [
         'login' => $user->email,
         'password' => 'password',
-    ])->assertRedirect('/');
+    ])->assertRedirect(route('account.security'));
 
     $this->assertAuthenticatedAs($user);
 

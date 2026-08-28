@@ -21,7 +21,7 @@ test('a deactivated account cannot sign in', function () {
 test('an account deactivated mid-session is signed out on the next request', function () {
     $user = User::factory()->twoFactorEnabled()->create();
 
-    $this->actingAs($user)->get('/')->assertOk();
+    $this->actingAs($user)->get(route('account.security'))->assertOk();
 
     // Assigned, not mass-assigned: `is_active` is not fillable, by design.
     $user->is_active = false;

@@ -38,7 +38,7 @@ test('signing out is reachable while un-enrolled', function () {
 
 test('an enrolled user passes through untouched', function () {
     $this->actingAs(User::factory()->twoFactorEnabled()->create())
-        ->get('/')
+        ->get(route('account.security'))
         ->assertOk();
 });
 

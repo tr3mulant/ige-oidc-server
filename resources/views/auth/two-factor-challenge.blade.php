@@ -1,4 +1,4 @@
-<x-guest-layout>
+<x-guest-layout :heading="__('Two-factor authentication')">
     <div class="mb-4 text-sm text-gray-600 dark:text-gray-400">
         {{ __('Open your authenticator app and enter the 6-digit code it is showing.') }}
     </div>
@@ -15,7 +15,7 @@
             <x-input-label for="code" :value="__('Authentication Code')" />
             <x-text-input
                 id="code"
-                class="block mt-1 w-full tracking-widest text-center text-lg"
+                class="mt-1 block w-full text-center text-lg tracking-widest"
                 type="text"
                 name="code"
                 inputmode="numeric"
@@ -27,7 +27,7 @@
         </div>
 
         <details class="mt-4 text-sm">
-            <summary class="cursor-pointer text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-gray-100">
+            <summary class="cursor-pointer text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-gray-100">
                 {{ __('Lost your device? Use a recovery code') }}
             </summary>
 
@@ -35,7 +35,7 @@
                 <x-input-label for="recovery_code" :value="__('Recovery Code')" />
                 <x-text-input
                     id="recovery_code"
-                    class="block mt-1 w-full"
+                    class="mt-1 block w-full"
                     type="text"
                     name="recovery_code"
                     autocomplete="one-time-code"
@@ -48,10 +48,8 @@
             </div>
         </details>
 
-        <div class="flex items-center justify-end mt-4">
-            <x-primary-button>
-                {{ __('Verify') }}
-            </x-primary-button>
+        <div class="mt-4 flex items-center justify-end">
+            <x-primary-button> {{ __('Verify') }} </x-primary-button>
         </div>
     </form>
 </x-guest-layout>

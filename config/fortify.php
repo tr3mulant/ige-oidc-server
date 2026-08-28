@@ -83,8 +83,13 @@ return [
      * Rarely reached. The intended URL is normally the `/oauth/authorize` request that
      * sent the browser here, so this is only the landing spot for someone who came to
      * the identity provider directly.
+     *
+     * It points at the self-service screen rather than `/` because `/` would only bounce
+     * them here anyway (plan §1.11) — there is no home page to land on. The three
+     * reasons to visit this host directly are all credential maintenance, and this is
+     * where all three are done.
      */
-    'home' => '/',
+    'home' => '/account-security',
 
     /*
     |--------------------------------------------------------------------------

@@ -12,7 +12,7 @@ test('a user can authenticate with their email address', function () {
     $this->post('/login', [
         'login' => $user->email,
         'password' => 'password',
-    ])->assertRedirect('/');
+    ])->assertRedirect(route('account.security'));
 
     $this->assertAuthenticatedAs($user);
 });
@@ -23,7 +23,7 @@ test('a user can authenticate with their legacy username', function () {
     $this->post('/login', [
         'login' => 'robinvance',
         'password' => 'password',
-    ])->assertRedirect('/');
+    ])->assertRedirect(route('account.security'));
 
     $this->assertAuthenticatedAs($user);
 });
