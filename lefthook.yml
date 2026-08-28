@@ -1,0 +1,22 @@
+# Formatting is applied, not discussed. The hook rewrites staged files on the way into a
+# commit so style never reaches review and no diff carries reformatting noise.
+#
+# One command covers both languages: `pint.json` enables the `Pint/laravel_blade` rule,
+# so `vendor/bin/pint` formats PHP *and* Blade — the latter by driving Prettier with
+# `prettier-plugin-blade` and `prettier-plugin-tailwindcss`, which also sorts Tailwind
+# class lists into canonical order. Nothing here depends on an editor extension being
+# installed, or configured the same way on two machines.
+#
+# If your editor also formats Blade on save, point it at Pint or turn it off for Blade.
+# Two formatters with different opinions will fight over every file.
+#
+# `stage_fixed: true` re-stages what Pint rewrites. Note the one sharp edge: with a
+# partially staged file (`git add -p`), this stages the whole file, including the part
+# you deliberately held back. Commit partial hunks with `--no-verify` if that matters.
+pre-commit:
+  parallel: true
+  jobs:
+    - name: pint
+      glob: '*.php'
+      run: vendor/bin/pint {staged_files}
+      stage_fixed: true
