@@ -26,7 +26,6 @@
         <!-- Tests run on Postgres, matching production. This service authenticates
              every app in the company, so the suite exercises the real engine rather
              than an in-memory stand-in. Requires the ige_oidc_server_test database. -->
-        <env name="DB_CONNECTION" value="pgsql"/>
         <env name="DB_DATABASE" value="ige_oidc_server_test"/>
         <env name="DB_URL" value=""/>
         <env name="MAIL_MAILER" value="array"/>

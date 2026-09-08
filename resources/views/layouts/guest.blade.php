@@ -19,6 +19,7 @@
 
     @vite(['resources/css/app.css', 'resources/js/app.js'])
 </head>
+
 <body class="font-sans antialiased">
     <div class="flex min-h-screen flex-col items-center bg-gray-100 pt-6 text-gray-900 sm:justify-center sm:pt-0 dark:bg-gray-900 dark:text-gray-100">
         {{-- The page's one and only h1. Pages used to carry their own, which is why

@@ -29,3 +29,17 @@ test('username cannot be set by mass assignment', function () {
 
     expect($user->username)->toBeNull();
 });
+
+test('is_active is issued under no scope', function () {
+    $user = User::factory()->create();
+
+    $claims = $user->getOidcClaims(array_keys(config('oidc-server.scopes')));
+
+    expect($claims)->not->toHaveKey('is_active');
+})->note('Deliberate, not an oversight. The IdP refuses a deactivated account before any token exists (FortifyServiceProvider::authenticateUsing, EnsureUserIsActive), so a synced claim could only ever carry true.');
+
+test('no configured scope lists is_active among its claims', function () {
+    $claims = collect(config('oidc-server.scopes'))->pluck('claims')->flatten();
+
+    expect($claims)->not->toContain('is_active');
+})->note('Identity is global; authorization is local. Adding is_active here would make offboarding appear to propagate while changing nothing at the client — see §2.3a of the SSO implementation plan before touching this.');

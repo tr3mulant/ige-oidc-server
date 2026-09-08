@@ -8,13 +8,24 @@ use Illuminate\Console\Attributes\Signature;
 use Illuminate\Console\Command;
 
 /**
- * Offboarding, in one place. Because identity lives only here, this is the whole
- * procedure: no client application has an account to disable, and none gets a say.
+ * Offboarding, step one of two. Identity lives only here, so this ends every login at
+ * every application — but it is not the whole procedure, and the half it misses is the
+ * half nobody notices.
  *
- * What it does not do is end sessions already established at client applications —
- * those survive until their own expiry, which is what the token TTLs bound. What it
- * guarantees is that this person completes no further authorization and receives no
- * further tokens.
+ * Two things survive it:
+ *
+ * 1. Sessions already established at client applications, until their own expiry. Note
+ *    that this is bounded by each client's session lifetime, not by the token TTLs — what
+ *    holds a person inside a client is that client's session cookie, not a token.
+ * 2. Work that runs *as a person without that person logging in*. This never stops,
+ *    because the only channel that could carry the news is a login, and a deactivated
+ *    person never logs in again. Today that means `tools.*`'s `runs:dispatch-scheduled`,
+ *    which gates on its own local `is_active` column.
+ *
+ * The second is why this command prints two warnings rather than one. `is_active` is
+ * deliberately not an OIDC claim: a synced one could only ever write `true`, since the
+ * refusals happen before any token is issued, so it would make offboarding look
+ * propagated while changing nothing. See §2.3a of the SSO implementation plan.
  */
 #[Signature('users:deactivate
     {user : Email address or username}
@@ -71,6 +82,10 @@ class DeactivateUser extends Command
 
         $this->components->info("Deactivated {$user->email}; revoked {$revoked} token(s).");
         $this->components->warn('Sessions already open at client applications last until they expire.');
+        $this->components->warn(
+            'This does not stop work that runs without a login. Deactivate this person in '
+            .'each client app that schedules for them — tools.* keeps its own is_active column.'
+        );
 
         return self::SUCCESS;
     }
