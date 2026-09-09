@@ -30,6 +30,8 @@ database/*.sqlite
 
 compose.yaml
 production.compose.yaml
+Jenkinsfile
+scripts
 lefthook.yml
 boost.json
 .mcp.json
