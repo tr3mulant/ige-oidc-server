@@ -15,6 +15,9 @@
              their own. --}}
     <meta name="color-scheme" content="light dark" />
 
+    <link rel="icon" href="{{ asset('favicon.ico') }}" sizes="any" />
+    <link rel="apple-touch-icon" href="{{ asset('apple-touch-icon.png') }}" />
+
     @fonts
 
     @vite(['resources/css/app.css', 'resources/js/app.js'])
