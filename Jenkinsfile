@@ -187,7 +187,7 @@ pipeline {
                         }
 
                         ssh -i "$SSH_KEY" $SSH_OPTS "$DEPLOY_TARGET" \
-                            "mkdir -p '$DEPLOY_PATH/scripts' && rm -f '$DEPLOY_PATH/.env.incoming'"
+                            "mkdir -p '$DEPLOY_PATH/scripts' '$DEPLOY_PATH/apache' && rm -f '$DEPLOY_PATH/.env.incoming'"
 
                         # The env lands under a temporary name; the deploy script
                         # installs it only once the image is confirmed pullable, so
@@ -197,6 +197,15 @@ pipeline {
                         scp -i "$SSH_KEY" $SSH_OPTS production.compose.yaml "$DEPLOY_TARGET:$DEPLOY_PATH/production.compose.yaml"
                         scp -i "$SSH_KEY" $SSH_OPTS scripts/ci/jenkins-deploy.sh "$DEPLOY_TARGET:$DEPLOY_PATH/scripts/deploy.sh"
                         scp -i "$SSH_KEY" $SSH_OPTS scripts/ci/smoke-test.sh "$DEPLOY_TARGET:$DEPLOY_PATH/scripts/smoke-test.sh"
+
+                        # The host vhosts are SHIPPED, NOT APPLIED. Applying means
+                        # writing /etc/apache2 and reloading, which needs root --
+                        # and this box also serves the registry this pipeline pulls
+                        # from, so a job that could write a bad vhost and reload
+                        # could take down the registry and remove its own ability to
+                        # deploy the fix. A human applies them with sudo.
+                        scp -i "$SSH_KEY" $SSH_OPTS deploy/apache/auth_irongateenterprises_com.conf        "$DEPLOY_TARGET:$DEPLOY_PATH/apache/"
+                        scp -i "$SSH_KEY" $SSH_OPTS deploy/apache/auth_irongateenterprises_com-le-ssl.conf "$DEPLOY_TARGET:$DEPLOY_PATH/apache/"
 
                         # Passed as environment, not interpolated into the remote
                         # command line, which is visible in the remote process list.

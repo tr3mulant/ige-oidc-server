@@ -32,6 +32,7 @@ compose.yaml
 production.compose.yaml
 Jenkinsfile
 scripts
+deploy
 lefthook.yml
 boost.json
 .mcp.json

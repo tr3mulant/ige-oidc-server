@@ -23,6 +23,8 @@ return Application::configure(basePath: dirname(__DIR__))
         health: '/up',
     )
     ->withMiddleware(function (Middleware $middleware): void {
+        $middleware->trustProxies(at: '*');
+
         /**
          * Appended to the `web` group rather than named on individual routes, because
          * the route that most needs them is not ours: Passport's `/oauth/authorize` is

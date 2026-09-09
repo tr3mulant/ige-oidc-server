@@ -6,7 +6,9 @@ log() { echo "[start-container $(date -u '+%H:%M:%S')] $*"; }
 warn() { echo "[start-container] WARNING: $*" >&2; }
 fail() { echo "[start-container] ERROR: $*" >&2; exit 1; }
 
-APP_USER="${USERNAME:-ige-oidc}"
+[ -n "${USERNAME:-}" ] || fail "USERNAME is not set. The image bakes it in from the USERNAME build arg; this script only runs inside that image."
+
+APP_USER="${USERNAME}"
 
 if [ $# -gt 0 ]; then
     exec gosu "$APP_USER" "$@"
