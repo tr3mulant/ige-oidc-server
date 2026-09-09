@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+log() { echo "[start-container $(date -u '+%H:%M:%S')] $*"; }
+warn() { echo "[start-container] WARNING: $*" >&2; }
+fail() { echo "[start-container] ERROR: $*" >&2; exit 1; }
+
+APP_USER="${USERNAME:-ige-oidc}"
+
+if [ $# -gt 0 ]; then
+    exec gosu "$APP_USER" "$@"
+fi
+
+log "ensuring the storage skeleton exists"
+rsync -a --ignore-existing /opt/ige-oidc/storage/ /var/www/html/storage/
+
+chown -R "$APP_USER":"$(id -gn "$APP_USER")" \
+    /var/www/html/storage \
+    /var/www/html/bootstrap/cache
+
+chmod -R g+rwX \
+    /var/www/html/storage \
+    /var/www/html/bootstrap/cache
+
+mkdir -p /run/php
+
+[ -n "${APP_KEY:-}" ] || fail "APP_KEY is not set. Check the env_file in production.compose.yaml."
+[ -n "${DB_DATABASE:-}" ] || fail "DB_DATABASE is not set. Check the env_file in production.compose.yaml."
+
+if [ -z "${PASSPORT_PRIVATE_KEY:-}" ] && [ ! -f /var/www/html/storage/oauth-private.key ]; then
+    warn "no Passport signing key on the storage volume. Run 'php artisan passport:keys' once, by hand, then restart. Never use --force: it invalidates every token at every client."
+fi
+
+log "env: APP_ENV=${APP_ENV:-unset} APP_URL=${APP_URL:-unset} DB_HOST=${DB_HOST:-unset} SESSION_DRIVER=${SESSION_DRIVER:-unset}"
+
+log "clearing stale config cache"
+gosu "$APP_USER" php /var/www/html/artisan config:clear
+
+log "running migrations"
+gosu "$APP_USER" php /var/www/html/artisan migrate --force
+
+log "caching config, routes, events and views"
+gosu "$APP_USER" php /var/www/html/artisan optimize
+
+log "starting supervisord (php-fpm, apache2)"
+exec /usr/bin/supervisord -c /etc/supervisor/conf.d/supervisord.conf

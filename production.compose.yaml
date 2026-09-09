@@ -1,52 +1,65 @@
 services:
-  app:
-    build:
-      context: "./docker/8.5"
-      dockerfile: production.Dockerfile
-      args:
-        WWWGROUP: "${WWWGROUP}"
-    image: "sail-8.5/app"
-    extra_hosts:
-      - "host.docker.internal:host-gateway"
-    ports:
-      - "${APP_PORT:-80}:80"
-      - "${VITE_PORT:-5173}:${VITE_PORT:-5173}"
-    environment:
-      WWWUSER: "${WWWUSER}"
-    volumes:
-      - ".:/var/www/html"
-    networks:
-      - sail
-    depends_on:
-      - pgsql
-  pgsql:
-    image: "postgres:18-alpine"
-    ports:
-      - "${FORWARD_DB_PORT:-5432}:5432"
-    environment:
-      PGPASSWORD: "${DB_PASSWORD:-secret}"
-      POSTGRES_DB: "${DB_DATABASE}"
-      POSTGRES_USER: "${DB_USERNAME}"
-      POSTGRES_PASSWORD: "${DB_PASSWORD:-secret}"
-    volumes:
-      - "sail-pgsql:/var/lib/postgresql"
-      - "./docker/pgsql/create-testing-database.sql:/docker-entrypoint-initdb.d/10-create-testing-database.sql"
-    networks:
-      - sail
-    healthcheck:
-      test:
-        - CMD
-        - pg_isready
-        - "-q"
-        - "-d"
-        - "${DB_DATABASE}"
-        - "-U"
-        - "${DB_USERNAME}"
-      retries: 3
-      timeout: 5s
+    app:
+        image: '${DOCKER_REGISTRY:?set DOCKER_REGISTRY}/${DOCKER_REGISTRY_PATH:-ige-oidc}/${DOCKER_IMAGE_NAME:-ige-oidc-server}:${DOCKER_TAG:-production}'
+        build:
+            context: .
+            dockerfile: docker/8.5/production.Dockerfile
+            args:
+                WWWUSER: '${WWWUSER:-1000}'
+                WWWGROUP: '${WWWGROUP:-1000}'
+                USERNAME: '${APP_USER:-ige-oidc}'
+        restart: unless-stopped
+        stop_grace_period: 30s
+        ports:
+            - '127.0.0.1:${APP_PORT:-8001}:80'
+        env_file: .env.production
+        environment:
+            SESSION_DRIVER: database
+            LOG_CHANNEL: stack
+            LOG_STACK: daily,stderr
+            LOG_DAILY_DAYS: 14
+            LOG_LEVEL: warning
+        volumes:
+            - 'ige-oidc-storage:/var/www/html/storage'
+        networks:
+            - ige-oidc
+        depends_on:
+            pgsql:
+                condition: service_healthy
+        logging:
+            driver: 'json-file'
+            options:
+                max-size: '50m'
+                max-file: '10'
+
+    pgsql:
+        image: 'postgres:18-alpine'
+        restart: unless-stopped
+        environment:
+            POSTGRES_DB: '${DB_DATABASE:?set DB_DATABASE}'
+            POSTGRES_USER: '${DB_USERNAME:?set DB_USERNAME}'
+            POSTGRES_PASSWORD: '${DB_PASSWORD:?set DB_PASSWORD}'
+        volumes:
+            - 'ige-oidc-pgsql:/var/lib/postgresql'
+        networks:
+            - ige-oidc
+        healthcheck:
+            test: ['CMD', 'pg_isready', '-q', '-d', '${DB_DATABASE}', '-U', '${DB_USERNAME}']
+            interval: 10s
+            retries: 5
+            timeout: 5s
+        logging:
+            driver: 'json-file'
+            options:
+                max-size: '25m'
+                max-file: '5'
+
 networks:
-  sail:
-    driver: bridge
+    ige-oidc:
+        driver: bridge
+
 volumes:
-  sail-pgsql:
-    driver: local
+    ige-oidc-pgsql:
+        driver: local
+    ige-oidc-storage:
+        driver: local
