@@ -37,7 +37,7 @@ test('the package client model is the one Passport uses', function () {
 });
 
 test('a bare passport:client is an authorization code client with refresh', function () {
-    $client = createIdpClient('Legacy intranet', 'https://app.irongateenterprises.com/intranet/redirect_uri');
+    $client = createIdpClient('Legacy intranet', 'https://app.example.com/intranet/redirect_uri');
 
     expect($client->hasGrantType('authorization_code'))->toBeTrue()
         ->and($client->hasGrantType('refresh_token'))->toBeTrue();
@@ -50,7 +50,7 @@ test('a bare passport:client is an authorization code client with refresh', func
  * produce a `REMOTE_USER`.
  */
 test('a bare passport:client grants neither password nor client credentials', function () {
-    $client = createIdpClient('Tools', 'https://tools.irongateenterprises.com/auth/callback');
+    $client = createIdpClient('Tools', 'https://tools.example.com/auth/callback');
 
     expect($client->hasGrantType('password'))->toBeFalse()
         ->and($client->hasGrantType('client_credentials'))->toBeFalse()
@@ -58,7 +58,7 @@ test('a bare passport:client grants neither password nor client credentials', fu
 });
 
 test('the client is confidential, so it must authenticate at the token endpoint', function () {
-    $client = createIdpClient('Legacy intranet', 'https://app.irongateenterprises.com/intranet/redirect_uri');
+    $client = createIdpClient('Legacy intranet', 'https://app.example.com/intranet/redirect_uri');
 
     expect($client->confidential())->toBeTrue()
         ->and($client->secret)->not->toBeNull();
@@ -70,14 +70,14 @@ test('the client is confidential, so it must authenticate at the token endpoint'
  * applications should not be asked to approve anything.
  */
 test('a client created without an owner skips the consent screen', function () {
-    $client = createIdpClient('Tools', 'https://tools.irongateenterprises.com/auth/callback');
+    $client = createIdpClient('Tools', 'https://tools.example.com/auth/callback');
 
     expect($client->firstParty())->toBeTrue()
         ->and($client->skipsAuthorization(User::factory()->create(), ['openid', 'profile']))->toBeTrue();
 });
 
 test('the registered redirect uri is stored exactly as given', function () {
-    $client = createIdpClient('Legacy intranet', 'https://app.irongateenterprises.com/intranet/redirect_uri');
+    $client = createIdpClient('Legacy intranet', 'https://app.example.com/intranet/redirect_uri');
 
-    expect($client->redirect_uris)->toBe(['https://app.irongateenterprises.com/intranet/redirect_uri']);
+    expect($client->redirect_uris)->toBe(['https://app.example.com/intranet/redirect_uri']);
 });
