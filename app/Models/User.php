@@ -72,6 +72,8 @@ class User extends Authenticatable implements MustVerifyEmail, OAuthenticatable,
     {
         return match ($claim) {
             'preferred_username' => $this->username,
+            'email_verified' => $this->hasVerifiedEmail(),
+            'updated_at' => $this->updated_at?->timestamp,
             default => $this->resolveDefaultOidcClaim($claim),
         };
     }

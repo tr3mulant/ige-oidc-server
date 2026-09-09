@@ -121,15 +121,12 @@ return [
     | entry exists for a claim. Override to match your User model's schema.
     |
     | String values are treated as model attribute names (e.g., 'name' => 'name').
-    | Callables receive the user model as the first argument:
-    |   'email_verified' => fn($user) => $user->email_verified_at !== null
+    | Computed claims live in `User::resolveOidcClaim()`.
     |
     */
     'default_claims_map' => [
         'name' => 'name',
         'email' => 'email',
-        'email_verified' => fn ($user) => $user->email_verified_at !== null,
-        'updated_at' => fn ($user) => $user->updated_at?->timestamp,
     ],
 
     /*
