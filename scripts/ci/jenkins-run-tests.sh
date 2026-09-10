@@ -22,19 +22,20 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$REPO_ROOT"
 
 export COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-ige-oidc-ci}"
+
+# The agent's own uid/gid, and the one thing here the credential does NOT get to
+# decide. This is a fact about the machine, not configuration: `docker compose
+# exec -u` has to name the account that owns the bind-mounted workspace, and a
+# credential asserting some other uid would only make every write land wrong.
 export WWWUSER="${WWWUSER:-$(id -u)}"
 export WWWGROUP="${WWWGROUP:-$(id -g)}"
-export APP_PORT="${APP_PORT:-8101}"
-export VITE_PORT="${VITE_PORT:-51731}"
-export FORWARD_DB_PORT="${FORWARD_DB_PORT:-54330}"
-export FORWARD_MAILPIT_PORT="${FORWARD_MAILPIT_PORT:-51025}"
-export FORWARD_MAILPIT_DASHBOARD_PORT="${FORWARD_MAILPIT_DASHBOARD_PORT:-58025}"
 
-# Same helper as the build script: --env-file .env.ci so compose never falls back to
+# Same helper as the build script: --env-file so compose never falls back to
 # reading .env, which is a developer's real environment on any machine that is
-# not a fresh Jenkins workspace.
+# not a fresh Jenkins workspace. The build script staged .env.testing here, and
+# every value compose interpolates comes out of it.
 compose() {
-    docker compose --env-file .env.ci "$@"
+    docker compose --env-file .env.testing "$@"
 }
 
 # Same appexec as the build script, and for the same reason: `docker compose exec` ignores

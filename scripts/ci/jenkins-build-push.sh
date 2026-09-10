@@ -21,8 +21,9 @@
 #   DOCKER_TAG             the short git sha of the commit under test
 #   DOCKER_REGISTRY_USER   from the 'ige-registry' credential
 #   DOCKER_REGISTRY_PASS   from the 'ige-registry' credential
+#   GIT_COMMIT             stamped into the image as the revision label
+#   WWWUSER / WWWGROUP     uid/gid of the app account inside the image
 # Optional:
-#   WWWUSER / WWWGROUP     uid/gid that owns the storage volume (default 1000)
 #   APP_USER               app user inside the image (default ige-oidc).
 #                          Named APP_USER rather than USERNAME because zsh sets
 #                          USERNAME to the login name of whoever is running it.
@@ -43,6 +44,11 @@ require DOCKER_IMAGE_NAME
 require DOCKER_TAG
 require DOCKER_REGISTRY_USER
 require DOCKER_REGISTRY_PASS
+# The image records which commit built it. An image labelled revision=unknown is
+# the one thing you would consult to find out what is running.
+require GIT_COMMIT
+require WWWUSER
+require WWWGROUP
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$REPO_ROOT"
@@ -53,7 +59,7 @@ APP_USER="${APP_USER:-ige-oidc}"
 echo "Image:  ${IMAGE}"
 echo "Tag:    ${DOCKER_TAG}"
 echo "User:   ${APP_USER}"
-echo "Commit: ${GIT_COMMIT:-unknown}"
+echo "Commit: ${GIT_COMMIT}"
 echo "Branch: ${GIT_BRANCH:-unknown}"
 echo ""
 
@@ -72,10 +78,10 @@ echo "Building..."
 docker build \
     --pull \
     --file docker/8.5/production.Dockerfile \
-    --build-arg "WWWUSER=${WWWUSER:-1000}" \
-    --build-arg "WWWGROUP=${WWWGROUP:-1000}" \
+    --build-arg "WWWUSER=${WWWUSER}" \
+    --build-arg "WWWGROUP=${WWWGROUP}" \
     --build-arg "USERNAME=${APP_USER}" \
-    --label "org.opencontainers.image.revision=${GIT_COMMIT:-unknown}" \
+    --label "org.opencontainers.image.revision=${GIT_COMMIT}" \
     --label "org.opencontainers.image.source=ige-oidc-server" \
     --label "org.opencontainers.image.created=$(date -u +%Y-%m-%dT%H:%M:%SZ)" \
     --tag "${IMAGE}:${DOCKER_TAG}" \

@@ -39,25 +39,11 @@ export COMPOSE_PROJECT_NAME="${COMPOSE_PROJECT_NAME:-ige-oidc-ci}"
 export WWWUSER="${WWWUSER:-$(id -u)}"
 export WWWGROUP="${WWWGROUP:-$(id -g)}"
 
-# Ports nothing else on a shared agent is likely to hold. compose.yaml publishes
-# 80, 5173, 5432, 1025 and 8025 by default, and other jobs on this node hold
-# their own picks.
-#
-# They bind inside the dind daemon's network namespace, not the host's, so
-# nothing here is reachable from outside the agent and none of it can collide
-# with a service on the box. That namespace is shared by every job on this node
-# though, so the defaults would still collide with another project's stack.
-export APP_PORT="${APP_PORT:-8101}"
-export VITE_PORT="${VITE_PORT:-51731}"
-export FORWARD_DB_PORT="${FORWARD_DB_PORT:-54330}"
-export FORWARD_MAILPIT_PORT="${FORWARD_MAILPIT_PORT:-51025}"
-export FORWARD_MAILPIT_DASHBOARD_PORT="${FORWARD_MAILPIT_DASHBOARD_PORT:-58025}"
-
-# Every compose call goes through here so --env-file .env.ci is never forgotten;
-# without it docker compose falls back to reading .env, which on any machine
-# that is not a fresh Jenkins workspace is a developer's real environment.
+# Every compose call goes through here so --env-file is never forgotten; without
+# it docker compose falls back to reading .env, which on any machine that is not
+# a fresh Jenkins workspace is a developer's real environment.
 compose() {
-    docker compose --env-file .env.ci "$@"
+    docker compose --env-file .env.testing "$@"
 }
 
 # Every exec into the app container goes through here, so no call site can
@@ -97,48 +83,28 @@ echo "================================"
 # Tolerate the source already being the destination, which happens when this is
 # run by hand on a machine that has its own .env.testing -- cp errors out on
 # that ("are the same file") and would fail the build for no reason.
+#
+# install, not cp, because of the mode. withCredentials writes its secret file
+# read-only (0400), and cp gives a file it creates the SOURCE's bits -- so a
+# second run in a workspace that was not cleaned finds a 0400 .env.testing and
+# cp fails on it with "Permission denied".
 if [ "$(readlink -f "$ENV_TEST_FILE")" = "$(readlink -f .env.testing)" ]; then
     echo "  .env.testing is already the source file, leaving it"
 else
-    cp "$ENV_TEST_FILE" .env.testing
+    install -m 600 "$ENV_TEST_FILE" .env.testing
     echo "  .env.testing staged"
 fi
 
-# compose.yaml interpolates ${WWWUSER}, ${APP_PORT}, ${DB_DATABASE} and friends,
-# and by default docker compose reads those from .env.
-#
-# This deliberately writes a SEPARATE .env.ci and passes it with --env-file
-# instead of writing .env. Copying the testing env over .env is harmless in a
-# fresh Jenkins workspace and destroys a developer's local environment anywhere
-# else -- including the APP_KEY. Never write .env from CI.
-#
-# install, not cp, and the mode is the whole point. cp gives a file it creates
-# the SOURCE's permission bits, and withCredentials writes its secret file
-# read-only (0400) -- so `cp` here produces a .env.ci that the append below
-# cannot open. 600 rather than 644: this is a copy of .env.testing.
-install -m 600 "$ENV_TEST_FILE" .env.ci
-{
-    echo "WWWUSER=${WWWUSER}"
-    echo "WWWGROUP=${WWWGROUP}"
-    echo "APP_PORT=${APP_PORT}"
-    echo "VITE_PORT=${VITE_PORT}"
-    echo "FORWARD_DB_PORT=${FORWARD_DB_PORT}"
-    echo "FORWARD_MAILPIT_PORT=${FORWARD_MAILPIT_PORT}"
-    echo "FORWARD_MAILPIT_DASHBOARD_PORT=${FORWARD_MAILPIT_DASHBOARD_PORT}"
-} >> .env.ci
-echo "  .env.ci written for compose interpolation (.env untouched)"
-
-# DB_DATABASE, DB_USERNAME and DB_PASSWORD are deliberately NOT appended above.
-# compose.yaml interpolates them into the pgsql service and the suite connects
-# with the same values, so a CI-only override here would create a database owned
-# by one account and point the tests at another -- which surfaces as `password
-# authentication failed` on every test rather than as a configuration error.
-for key in DB_CONNECTION DB_HOST DB_DATABASE DB_USERNAME DB_PASSWORD; do
-    [ -n "$(envval "$key" .env.ci)" ] || {
+# The credential is the configuration. Nothing here supplies a value it omits:
+# compose reads every one of these through --env-file, and a missing one stops
+# the build instead of resolving to something only this file knows.
+for key in DB_CONNECTION DB_HOST DB_DATABASE DB_USERNAME DB_PASSWORD \
+           APP_PORT VITE_PORT FORWARD_DB_PORT \
+           FORWARD_MAILPIT_PORT FORWARD_MAILPIT_DASHBOARD_PORT; do
+    [ -n "$(envval "$key" .env.testing)" ] || {
         echo "ERROR: $key is not set in the .env.testing credential." >&2
-        echo "  compose.yaml interpolates it into the pgsql service, and the suite" >&2
-        echo "  connects with it. Add it to the 'ige-oidc-server.env.testing'" >&2
-        echo "  Secret file in Jenkins." >&2
+        echo "  compose.yaml interpolates it, and nothing here defaults it." >&2
+        echo "  Add it to the 'ige-oidc-server.env.testing' Secret file in Jenkins." >&2
         exit 1
     }
 done
@@ -147,7 +113,7 @@ done
 # 127.0.0.1, left over from the bare-metal era, which inside the container is
 # the container itself. It fails as `connection refused` several minutes into
 # the run with nothing pointing at the cause.
-DB_HOST="$(envval DB_HOST .env.ci)"
+DB_HOST="$(envval DB_HOST .env.testing)"
 [ "$DB_HOST" = "pgsql" ] || {
     echo "ERROR: DB_HOST is '$DB_HOST', but the suite runs INSIDE the container." >&2
     echo "  It must be 'pgsql' -- the compose service name. 127.0.0.1 there is the" >&2
@@ -176,8 +142,8 @@ echo "Verifying container..."
 appexec php --version
 
 echo "Waiting for postgres..."
-DB_USERNAME="$(envval DB_USERNAME .env.ci)"
-DB_DATABASE="$(envval DB_DATABASE .env.ci)"
+DB_USERNAME="$(envval DB_USERNAME .env.testing)"
+DB_DATABASE="$(envval DB_DATABASE .env.testing)"
 PG_READY=false
 for i in $(seq 1 30); do
     if compose exec -T pgsql pg_isready -q -U "$DB_USERNAME" -d "$DB_DATABASE" 2>/dev/null; then

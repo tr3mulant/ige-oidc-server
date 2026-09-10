@@ -119,6 +119,15 @@ pipeline {
                     return branch in ['main', 'origin/main', 'refs/remotes/origin/main']
                 }
             }
+            environment {
+                // uid/gid of the app account inside the production image. Fixed,
+                // and scoped to this stage rather than the pipeline: storage is a
+                // named volume so nothing outside the container has to match, but
+                // the CI containers bind-mount the workspace and need the agent's
+                // real id instead.
+                WWWUSER  = '1000'
+                WWWGROUP = '1000'
+            }
             options {
                 // A cold agent compiles the whole PHP layer with no cache.
                 timeout(time: 30, unit: 'MINUTES')
@@ -237,7 +246,7 @@ pipeline {
         failure {
             // Backstop for a teardown that could not run. -v is correct here and
             // nowhere near the deploy: this is the ephemeral CI database.
-            sh 'docker compose --env-file .env.ci down -v --remove-orphans 2>/dev/null || true'
+            sh 'docker compose --env-file .env.testing down -v --remove-orphans 2>/dev/null || true'
         }
         cleanup {
             cleanWs()

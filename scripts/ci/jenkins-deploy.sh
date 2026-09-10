@@ -29,13 +29,14 @@
 #   DEPLOY_DIR      where the compose file and .env.production live
 #                   (default /var/www/ige-oidc)
 #   APP_USER        the account php-fpm runs as (default ige-oidc)
-#   APP_PORT        loopback port host Apache proxies to (default 8001)
+#
+# APP_PORT is deliberately not here. It is read from .env.production, and the
+# deploy stops if that file does not set it.
 
 set -euo pipefail
 
 DEPLOY_DIR="${DEPLOY_DIR:-/var/www/ige-oidc}"
 APP_USER="${APP_USER:-ige-oidc}"
-APP_PORT="${APP_PORT:-8001}"
 # Under the deploy directory, which the deploy user owns. NOT /var/backups:
 # that is root-owned drwxr-xr-x on a stock Ubuntu box, so `mkdir -p` there fails
 # for the deploy user -- and with `set -e`, that aborts the whole deploy at a
@@ -179,10 +180,31 @@ if [ -f .env.incoming ]; then
     echo ""
 fi
 
+APP_PORT="$(envval APP_PORT .env.production)"
+[ -n "$APP_PORT" ] || {
+    echo "ERROR: APP_PORT is not set in .env.production." >&2
+    echo "  It is the loopback port host Apache proxies to, and the vhost expects" >&2
+    echo "  a specific one. Add it to the 'ige-oidc-server.env.production' Secret" >&2
+    echo "  file in Jenkins." >&2
+    exit 1
+}
+echo "  publishing on 127.0.0.1:${APP_PORT}"
+
 export DOCKER_TAG APP_USER APP_PORT
 
 DB_USERNAME="$(envval DB_USERNAME .env.production)"
 DB_DATABASE="$(envval DB_DATABASE .env.production)"
+
+# The pre-swap dump runs with these. A guess here backs up the wrong database,
+# or nothing, immediately before the container is replaced.
+for key in DB_USERNAME DB_DATABASE; do
+    [ -n "${!key}" ] || {
+        echo "ERROR: $key is not set in .env.production." >&2
+        echo "  The pre-swap database backup runs with it. Add it to the" >&2
+        echo "  'ige-oidc-server.env.production' Secret file in Jenkins." >&2
+        exit 1
+    }
+done
 
 # --- Pull --------------------------------------------------------------------
 # Before stopping anything: pulling can be slow, and there is no reason for the
@@ -238,8 +260,8 @@ if [ -n "$(compose ps --status running --quiet app 2>/dev/null)" ]; then
             # tag rolls back the CODE but never the SCHEMA, so this dump is what
             # makes that recoverable.
             DB_BACKUP="${BACKUP_DIR}/ige-oidc-${STAMP}-pre-${DOCKER_TAG}.sql.gz"
-            if ( umask 077; compose exec -T pgsql pg_dump -U "${DB_USERNAME:-ige_oidc}" \
-                    -d "${DB_DATABASE:-ige_oidc}" 2>/dev/null | gzip > "$DB_BACKUP" ); then
+            if ( umask 077; compose exec -T pgsql pg_dump -U "$DB_USERNAME" \
+                    -d "$DB_DATABASE" 2>/dev/null | gzip > "$DB_BACKUP" ); then
                 chmod 600 "$DB_BACKUP" 2>/dev/null || true
                 echo "  $DB_BACKUP ($(du -h "$DB_BACKUP" | cut -f1))"
             else
