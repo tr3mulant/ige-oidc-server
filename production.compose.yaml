@@ -1,65 +1,68 @@
 services:
-    app:
-        image: '${DOCKER_REGISTRY:?set DOCKER_REGISTRY}/${DOCKER_REGISTRY_PATH:-ige-oidc}/${DOCKER_IMAGE_NAME:-ige-oidc-server}:${DOCKER_TAG:-production}'
-        build:
-            context: .
-            dockerfile: docker/8.5/production.Dockerfile
-            args:
-                WWWUSER: '${WWWUSER:-1000}'
-                WWWGROUP: '${WWWGROUP:-1000}'
-                USERNAME: '${APP_USER:-ige-oidc}'
-        restart: unless-stopped
-        stop_grace_period: 30s
-        ports:
-            - '127.0.0.1:${APP_PORT:-8001}:80'
-        env_file: .env.production
-        environment:
-            SESSION_DRIVER: database
-            LOG_CHANNEL: stack
-            LOG_STACK: daily,stderr
-            LOG_DAILY_DAYS: 14
-            LOG_LEVEL: warning
-        volumes:
-            - 'ige-oidc-storage:/var/www/html/storage'
-        networks:
-            - ige-oidc
-        depends_on:
-            pgsql:
-                condition: service_healthy
-        logging:
-            driver: 'json-file'
-            options:
-                max-size: '50m'
-                max-file: '10'
+  app:
+    image: "${DOCKER_REGISTRY:?set DOCKER_REGISTRY}/${DOCKER_REGISTRY_PATH:-ige-oidc}/${DOCKER_IMAGE_NAME:-ige-oidc-server}:${DOCKER_TAG:-production}"
+    build:
+      context: .
+      dockerfile: docker/8.5/production.Dockerfile
+      args:
+        WWWUSER: "${WWWUSER:-1000}"
+        WWWGROUP: "${WWWGROUP:-1000}"
+        USERNAME: "${APP_USER:-ige-oidc}"
+    restart: unless-stopped
+    stop_grace_period: 30s
+    ports:
+      - "127.0.0.1:${APP_PORT:-8001}:80"
+    env_file: .env.production
+    volumes:
+      - "ige-oidc-storage:/var/www/html/storage"
+    networks:
+      - ige-oidc
+    depends_on:
+      pgsql:
+        condition: service_healthy
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "50m"
+        max-file: "10"
 
-    pgsql:
-        image: 'postgres:18-alpine'
-        restart: unless-stopped
-        environment:
-            POSTGRES_DB: '${DB_DATABASE:?set DB_DATABASE}'
-            POSTGRES_USER: '${DB_USERNAME:?set DB_USERNAME}'
-            POSTGRES_PASSWORD: '${DB_PASSWORD:?set DB_PASSWORD}'
-        volumes:
-            - 'ige-oidc-pgsql:/var/lib/postgresql'
-        networks:
-            - ige-oidc
-        healthcheck:
-            test: ['CMD', 'pg_isready', '-q', '-d', '${DB_DATABASE}', '-U', '${DB_USERNAME}']
-            interval: 10s
-            retries: 5
-            timeout: 5s
-        logging:
-            driver: 'json-file'
-            options:
-                max-size: '25m'
-                max-file: '5'
+  pgsql:
+    image: "postgres:18-alpine"
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: "${DB_DATABASE:?set DB_DATABASE}"
+      POSTGRES_USER: "${DB_USERNAME:?set DB_USERNAME}"
+      POSTGRES_PASSWORD: "${DB_PASSWORD:?set DB_PASSWORD}"
+    volumes:
+      - "ige-oidc-pgsql:/var/lib/postgresql"
+    networks:
+      - ige-oidc
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "pg_isready",
+          "-q",
+          "-d",
+          "${DB_DATABASE}",
+          "-U",
+          "${DB_USERNAME}",
+        ]
+      interval: 10s
+      retries: 5
+      timeout: 5s
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "25m"
+        max-file: "5"
 
 networks:
-    ige-oidc:
-        driver: bridge
+  ige-oidc:
+    driver: bridge
 
 volumes:
-    ige-oidc-pgsql:
-        driver: local
-    ige-oidc-storage:
-        driver: local
+  ige-oidc-pgsql:
+    driver: local
+  ige-oidc-storage:
+    driver: local
