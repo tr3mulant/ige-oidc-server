@@ -17,17 +17,23 @@ use Illuminate\Contracts\Validation\ValidationRule;
  * Account creation and sign-in both validate through here. If they held separate
  * copies of the pattern, drift would produce accounts that can be created but never
  * used, or the reverse.
+ *
+ * A dot or an underscore may separate runs of alphanumerics, because the roster
+ * contains spellings of both shapes and this rule may not be narrower than the file it
+ * has to reproduce. They must be internal and single: a leading, trailing or doubled
+ * separator matches nothing in the roster, and every such spelling is a typo of one
+ * that is.
  */
 class Username implements ValidationRule
 {
-    public const PATTERN = '/^[a-z0-9]+$/';
+    public const PATTERN = '/^[a-z0-9]+(?:[._][a-z0-9]+)*$/';
 
     public const MAX_LENGTH = 64;
 
     public function validate(string $attribute, mixed $value, Closure $fail): void
     {
         if (! is_string($value) || preg_match(self::PATTERN, $value) !== 1) {
-            $fail('The :attribute must be lowercase letters and digits only, matching the legacy htpasswd spelling exactly.');
+            $fail('The :attribute must be lowercase letters and digits, which a single dot or underscore may separate, matching the legacy htpasswd spelling exactly.');
 
             return;
         }

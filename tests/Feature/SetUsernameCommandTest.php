@@ -64,12 +64,33 @@ test('it rejects a username the legacy intranet could not use', function (string
     expect($user->fresh()->username)->toBe('rvance');
 })->with([
     'uppercase' => 'RobinVance',
-    'dotted' => 'robin.vance',
-    'underscored' => 'robin_vance',
     'hyphenated' => 'robin-vance',
     'spaced' => 'robin vance',
     'empty' => '',
+    'leading separator' => '.robinvance',
+    'trailing separator' => 'robinvance_',
+    'doubled separator' => 'robin..vance',
     'too long' => 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+]);
+
+/**
+ * The counterpart of the `users:create` acceptance case, kept here for the same reason
+ * the rejection dataset is duplicated: these two commands must agree on every spelling,
+ * or an account is created in a shape this command would refuse to correct into.
+ */
+test('it accepts the separated spellings the roster actually contains', function (string $username) {
+    $user = User::factory()->create(['username' => 'rvance']);
+
+    $this->artisan('users:set-username', [
+        'user' => 'rvance',
+        'username' => $username,
+    ])->assertSuccessful();
+
+    expect($user->fresh()->username)->toBe($username);
+})->with([
+    'dotted' => 'robin.vance',
+    'underscored' => 'robin_vance',
+    'both' => 'robin.vance_two',
 ]);
 
 test('it refuses to take a username another account already holds', function () {

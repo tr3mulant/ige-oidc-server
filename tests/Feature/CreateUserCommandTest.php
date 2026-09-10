@@ -65,12 +65,32 @@ test('it rejects a username the legacy intranet could not use', function (string
     expect(User::count())->toBe(0);
 })->with([
     'uppercase' => 'JaneDoe',
-    'dotted' => 'jane.doe',
-    'underscored' => 'jane_doe',
     'hyphenated' => 'jane-doe',
     'spaced' => 'jane doe',
     'empty' => '',
+    'leading separator' => '.janedoe',
+    'trailing separator' => 'janedoe_',
+    'doubled separator' => 'jane..doe',
     'too long' => 'aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa',
+]);
+
+/**
+ * The roster is not uniformly alphanumeric — it holds both a dotted personal spelling
+ * and an underscored machine account. Refusing either would force a different spelling
+ * at the IdP than the one already written into the legacy `listed_by` column.
+ */
+test('it accepts the separated spellings the roster actually contains', function (string $username) {
+    $this->artisan('users:create', [
+        'name' => 'Test Person',
+        'email' => 'test@example.com',
+        'username' => $username,
+    ])->assertSuccessful();
+
+    expect(User::firstWhere('username', $username))->not->toBeNull();
+})->with([
+    'dotted' => 'jane.doe',
+    'underscored' => 'jane_doe',
+    'both' => 'jane.doe_two',
 ]);
 
 /**
