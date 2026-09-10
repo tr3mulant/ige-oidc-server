@@ -13,11 +13,17 @@
 # healthy container -- while every client application is broken. A plain HTTP
 # check would pass all of it.
 
-DEPLOY_DIR="${DEPLOY_DIR:-/var/www/ige-oidc}"
-COMPOSE_FILE="production.compose.yaml"
+# Both are supplied by scripts/deploy.sh, which reads APP_USER out of
+# .env.production. Neither defaults: this is the deploy's only real
+# verification, and a default pointing at the wrong directory or checking the
+# wrong account would print PASS about something else entirely.
+#
 # APP_USER, not USERNAME: zsh sets USERNAME to the login name, which makes this
 # check the wrong account and fail on a perfectly healthy container.
-APP_USER="${APP_USER:-ige-oidc}"
+: "${DEPLOY_DIR:?set DEPLOY_DIR -- the directory holding production.compose.yaml and .env.production}"
+: "${APP_USER:?set APP_USER -- the account php-fpm runs as, as set in .env.production}"
+
+COMPOSE_FILE="production.compose.yaml"
 cd "$DEPLOY_DIR" || exit 1
 
 echo "================================"

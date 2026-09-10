@@ -7,7 +7,7 @@ services:
       args:
         WWWUSER: "${WWWUSER:-1000}"
         WWWGROUP: "${WWWGROUP:-1000}"
-        USERNAME: "${APP_USER:-ige-oidc}"
+        USERNAME: "${APP_USER:?set APP_USER}"
     restart: unless-stopped
     stop_grace_period: 30s
     ports:

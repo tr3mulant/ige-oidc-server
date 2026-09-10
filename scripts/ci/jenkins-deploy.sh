@@ -23,26 +23,20 @@
 #   this says so in one line instead of leaving it to be discovered by users.
 #
 # Required environment:
+#   DEPLOY_DIR      where the compose file and .env.production live. No default:
+#                   the Jenkinsfile reads it from the .env.production credential,
+#                   and a fallback here would be a second copy of a deployment
+#                   coordinate -- silently deploying into the wrong directory on
+#                   a box that serves two other sites.
 #   DOCKER_REGISTRY DOCKER_REGISTRY_PATH DOCKER_IMAGE_NAME DOCKER_TAG
 #   DOCKER_REGISTRY_USER DOCKER_REGISTRY_PASS
-# Optional:
-#   DEPLOY_DIR      where the compose file and .env.production live
-#                   (default /var/www/ige-oidc)
-#   APP_USER        the account php-fpm runs as (default ige-oidc)
 #
-# APP_PORT is deliberately not here. It is read from .env.production, and the
-# deploy stops if that file does not set it.
+# APP_USER and APP_PORT are deliberately not here. Both are read from
+# .env.production below -- the only copy of either -- and the deploy stops if
+# that file does not set them.
 
 set -euo pipefail
 
-DEPLOY_DIR="${DEPLOY_DIR:-/var/www/ige-oidc}"
-APP_USER="${APP_USER:-ige-oidc}"
-# Under the deploy directory, which the deploy user owns. NOT /var/backups:
-# that is root-owned drwxr-xr-x on a stock Ubuntu box, so `mkdir -p` there fails
-# for the deploy user -- and with `set -e`, that aborts the whole deploy at a
-# particularly bad moment, just after the new .env has been moved into place but
-# before the container is swapped.
-BACKUP_DIR="${BACKUP_DIR:-$DEPLOY_DIR/backups}"
 COMPOSE_FILE="production.compose.yaml"
 
 echo "================================================================"
@@ -53,12 +47,20 @@ require() {
     local name="$1"
     [ -n "${!name:-}" ] || { echo "ERROR: $name is not set" >&2; exit 1; }
 }
+require DEPLOY_DIR
 require DOCKER_REGISTRY
 require DOCKER_REGISTRY_PATH
 require DOCKER_IMAGE_NAME
 require DOCKER_TAG
 require DOCKER_REGISTRY_USER
 require DOCKER_REGISTRY_PASS
+
+# Under the deploy directory, which the deploy user owns. NOT /var/backups:
+# that is root-owned drwxr-xr-x on a stock Ubuntu box, so `mkdir -p` there fails
+# for the deploy user -- and with `set -e`, that aborts the whole deploy at a
+# particularly bad moment, just after the new .env has been moved into place but
+# before the container is swapped.
+BACKUP_DIR="${BACKUP_DIR:-$DEPLOY_DIR/backups}"
 
 IMAGE="${DOCKER_REGISTRY}/${DOCKER_REGISTRY_PATH}/${DOCKER_IMAGE_NAME}"
 cd "$DEPLOY_DIR" || { echo "ERROR: $DEPLOY_DIR does not exist" >&2; exit 1; }
@@ -103,37 +105,24 @@ echo "  storage volume is mapped"
 # this runs) and is only moved into place once the image is confirmed pullable.
 # Not through /tmp, which is world readable, and this file is all secrets.
 if [ -f .env.incoming ]; then
-    ENV_UNDER_TEST=.env.incoming
     echo "  new .env.production staged"
 elif [ -f .env.production ]; then
-    ENV_UNDER_TEST=.env.production
     echo "  no new env staged, keeping the existing .env.production"
 else
     echo "ERROR: no .env.incoming and no existing .env.production" >&2
     exit 1
 fi
 
-# The drift check. docker compose resolves ${APP_USER} from the SHELL
-# environment before it reads --env-file, so the value the Jenkinsfile passed
-# over ssh wins over anything the env file says -- silently. If somebody renames
-# the app user in .env.production and not in the Jenkinsfile, the container
-# builds and boots as one account while the env file claims another, and the
-# first symptom is that nothing can read oauth-private.key.
+# An APP_USER drift check used to live here, because the Jenkinsfile held a
+# second copy of the app account and passed it over ssh -- and docker compose
+# resolves ${APP_USER} from the SHELL environment BEFORE it reads --env-file, so
+# that copy won over the env file silently. It is gone because the second copy
+# is gone: APP_USER is read from .env.production below, the image was built from
+# the same key in the same credential, and there is nothing left to disagree.
 #
-# An env file that does not mention APP_USER at all is the normal case and fine:
-# it is a deployment coordinate, not app config.
-ENV_APP_USER="$(envval APP_USER "$ENV_UNDER_TEST")"
-if [ -n "$ENV_APP_USER" ] && [ "$ENV_APP_USER" != "$APP_USER" ]; then
-    echo "ERROR: APP_USER disagrees between the pipeline and the env file." >&2
-    echo "  Jenkinsfile:        $APP_USER" >&2
-    echo "  $ENV_UNDER_TEST:    $ENV_APP_USER" >&2
-    echo "" >&2
-    echo "  The shell value wins over --env-file, so this would deploy as" >&2
-    echo "  '$APP_USER' while the env file claims '$ENV_APP_USER'. Make them" >&2
-    echo "  agree, or drop APP_USER from the env file -- it belongs to the" >&2
-    echo "  pipeline." >&2
-    exit 1
-fi
+# If you ever reintroduce APP_USER to this script's environment, restore the
+# check with it. The failure it caught is a container that boots healthy, serves
+# every page, and cannot read oauth-private.key.
 
 echo "$DOCKER_REGISTRY_PASS" | docker login --username "$DOCKER_REGISTRY_USER" --password-stdin "$DOCKER_REGISTRY" >/dev/null
 echo "  registry login ok"
@@ -189,6 +178,22 @@ APP_PORT="$(envval APP_PORT .env.production)"
     exit 1
 }
 echo "  publishing on 127.0.0.1:${APP_PORT}"
+
+# The account php-fpm runs as, and therefore the account that must own
+# oauth-private.key. Read from the env file rather than passed in by the
+# pipeline: compose resolves ${APP_USER} from the shell before it reads
+# --env-file, so a second copy anywhere would win over this one silently. This
+# is the only copy, and the image was built from the same key in the same
+# credential.
+APP_USER="$(envval APP_USER .env.production)"
+[ -n "$APP_USER" ] || {
+    echo "ERROR: APP_USER is not set in .env.production." >&2
+    echo "  It is the account php-fpm runs as and the owner of the Passport" >&2
+    echo "  signing keys, and the production image was built with it. Add it to" >&2
+    echo "  the 'ige-oidc-server.env.production' Secret file in Jenkins." >&2
+    exit 1
+}
+echo "  running as ${APP_USER}"
 
 export DOCKER_TAG APP_USER APP_PORT
 

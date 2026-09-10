@@ -22,23 +22,31 @@ pipeline {
         // each other's containers and fight over the published ports.
         disableConcurrentBuilds()
     }
+    // What is deliberately NOT in this block: DEPLOY_TARGET, DEPLOY_PATH,
+    // APP_USER and DOCKER_REGISTRY. They name the box this deploys to, the
+    // directory it deploys into, the account php-fpm runs as and the registry it
+    // pulls from -- deployment CONFIGURATION, and this repository is public.
+    // They live in the 'ige-oidc-server.env.production' Secret file, so moving
+    // the deployment is an edit to that credential rather than a commit.
+    //
+    // A credentials() binding for that file would be legal here, and would reach
+    // every stage and the post blocks. It is bound per-stage instead, so the
+    // production secrets in it -- APP_KEY, DB_PASSWORD, the OIDC client secrets
+    // -- are on the agent's disk only during the two stages that need them, and
+    // not through checkout and the test run.
+    //
+    // What cannot be done here either way is READING a value out of that file:
+    // environment{} is evaluated before any step can run, so there is no sh to
+    // grep with. Each stage reads what it needs with scripts/ci/envval.sh, which
+    // fails loudly on a missing key instead of defaulting to a box.
+    //
+    // What is left below is the image's own naming -- which is this public
+    // repository's own name -- and the tag, which is the commit under test.
     environment {
-        DOCKER_REGISTRY      = 'registry.irongateenterprises.com'
         DOCKER_REGISTRY_PATH = 'ige-oidc'
         DOCKER_IMAGE_NAME    = 'ige-oidc-server'
 
         COMPOSE_PROJECT_NAME = 'ige-oidc-ci'
-
-        // Holds production.compose.yaml, .env.production and scripts/. Not a git
-        // checkout -- no source is deployed.
-        DEPLOY_TARGET = 'deploy@198.199.109.91'
-        DEPLOY_PATH   = '/var/www/ige-oidc'
-
-        // APP_USER, not USERNAME: compose reads ${USERNAME} from the shell, and
-        // zsh sets it to the operator's login name. This is the account php-fpm
-        // runs as and therefore the one that must own oauth-private.key; the
-        // deploy script aborts if .env.production disagrees.
-        APP_USER = 'ige-oidc'
 
         // substring, not take(7): StringGroovyMethods.take is not in
         // script-security's whitelist and halts the script before any stage runs.
@@ -133,12 +141,33 @@ pipeline {
                 timeout(time: 30, unit: 'MINUTES')
             }
             steps {
-                withCredentials([usernamePassword(
-                    credentialsId: 'ige-registry',
-                    usernameVariable: 'DOCKER_REGISTRY_USER',
-                    passwordVariable: 'DOCKER_REGISTRY_PASS'
-                )]) {
-                    sh 'bash scripts/ci/jenkins-build-push.sh'
+                withCredentials([
+                    file(credentialsId: 'ige-oidc-server.env.production', variable: 'ENV_PROD'),
+                    usernamePassword(
+                        credentialsId: 'ige-registry',
+                        usernameVariable: 'DOCKER_REGISTRY_USER',
+                        passwordVariable: 'DOCKER_REGISTRY_PASS'
+                    )
+                ]) {
+                    // Single-quoted, so the shell expands these and Groovy never
+                    // does. A double-quoted step would interpolate the values on
+                    // the controller and copy them into the agent's process list.
+                    sh '''
+                        set -eu
+
+                        # APP_USER is read here and nowhere else in this stage:
+                        # it becomes the image's --build-arg USERNAME, and the
+                        # deploy reads the SAME key from the SAME file on the
+                        # server. An image built as one account while the volume
+                        # is owned by another is a healthy container that cannot
+                        # read oauth-private.key and therefore cannot sign a
+                        # token -- with no error anywhere.
+                        DOCKER_REGISTRY="$(bash scripts/ci/envval.sh DOCKER_REGISTRY "$ENV_PROD")"
+                        APP_USER="$(bash scripts/ci/envval.sh APP_USER "$ENV_PROD")"
+                        export DOCKER_REGISTRY APP_USER
+
+                        bash scripts/ci/jenkins-build-push.sh
+                    '''
                 }
             }
         }
@@ -176,6 +205,19 @@ pipeline {
                             }
                         done
 
+                        # The deployment coordinates, out of the credential rather
+                        # than out of this file. envval.sh exits non-zero on a
+                        # missing key, and `set -e` turns that into a failed
+                        # stage -- deliberately, so a half-configured credential
+                        # stops here instead of resolving to somebody's default.
+                        #
+                        # Not echoed anywhere below, and do not add `set -x`:
+                        # values read out of a Secret FILE are not masked in the
+                        # build log the way a secret-text binding is.
+                        DEPLOY_TARGET="$(bash scripts/ci/envval.sh DEPLOY_TARGET "$ENV_PROD")"
+                        DEPLOY_PATH="$(bash scripts/ci/envval.sh DEPLOY_PATH "$ENV_PROD")"
+                        DOCKER_REGISTRY="$(bash scripts/ci/envval.sh DOCKER_REGISTRY "$ENV_PROD")"
+
                         # The key path is deliberately not in SSH_OPTS: every use
                         # below relies on word-splitting, which would break a path
                         # containing a space -- and Jenkins stages the key under
@@ -186,7 +228,8 @@ pipeline {
                         ssh -i "$SSH_KEY" $SSH_OPTS "$DEPLOY_TARGET" \
                             "test -d '$DEPLOY_PATH' && test -w '$DEPLOY_PATH'" || {
                             echo "Deploy directory missing or not writable by the deploy user."
-                            echo "  $DEPLOY_TARGET:$DEPLOY_PATH"
+                            echo "  $DEPLOY_PATH, on the host named by DEPLOY_TARGET in the"
+                            echo "  'ige-oidc-server.env.production' credential."
                             echo ""
                             echo "Provision it once, as root:"
                             echo "      mkdir -p $DEPLOY_PATH"
@@ -219,14 +262,20 @@ pipeline {
                         # Passed as environment, not interpolated into the remote
                         # command line, which is visible in the remote process list.
                         # Single-quoted for the remote shell, so none of these values
-                        # may contain a single quote.
+                        # may contain a single quote -- envval.sh rejects one in the
+                        # values it reads, for exactly this reason.
+                        #
+                        # APP_USER is NOT passed. deploy.sh reads it from the
+                        # .env.production it just installed, which is the same file
+                        # this stage read the coordinates from and the same one the
+                        # image was built against. One copy, so there is nothing
+                        # left to drift.
                         ssh -i "$SSH_KEY" $SSH_OPTS "$DEPLOY_TARGET" \
                             "DEPLOY_DIR='$DEPLOY_PATH' \
                              DOCKER_REGISTRY='$DOCKER_REGISTRY' \
                              DOCKER_REGISTRY_PATH='$DOCKER_REGISTRY_PATH' \
                              DOCKER_IMAGE_NAME='$DOCKER_IMAGE_NAME' \
                              DOCKER_TAG='$DOCKER_TAG' \
-                             APP_USER='$APP_USER' \
                              DOCKER_REGISTRY_USER='$DOCKER_REGISTRY_USER' \
                              DOCKER_REGISTRY_PASS='$DOCKER_REGISTRY_PASS' \
                              bash $DEPLOY_PATH/scripts/deploy.sh"
@@ -241,7 +290,12 @@ pipeline {
             // itself, not as "no test results found".
             junit allowEmptyResults: true, testResults: 'tests/junit.xml'
 
-            sh 'docker logout $DOCKER_REGISTRY || true'
+            // `docker logout` used to be here. It needs DOCKER_REGISTRY, which now
+            // comes out of a credential bound inside a stage, and a post block
+            // cannot see one. It moved to an EXIT trap in jenkins-build-push.sh --
+            // the only thing that ever logs THIS AGENT in (the login in
+            // jenkins-deploy.sh runs on the server, not here). Beside the login it
+            // undoes, it also covers the paths where the push fails.
         }
         failure {
             // Backstop for a teardown that could not run. -v is correct here and

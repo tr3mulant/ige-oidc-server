@@ -15,7 +15,9 @@
 # deploy that ever ran is still addressable by its own tag.
 #
 # Required environment (the Jenkinsfile sets all of these):
-#   DOCKER_REGISTRY        registry.irongateenterprises.com
+#   DOCKER_REGISTRY        the registry host. Read out of the .env.production
+#                          credential by the Jenkinsfile, not named here or in
+#                          the Jenkinsfile -- this repository is public.
 #   DOCKER_REGISTRY_PATH   ige-oidc
 #   DOCKER_IMAGE_NAME      ige-oidc-server
 #   DOCKER_TAG             the short git sha of the commit under test
@@ -23,8 +25,12 @@
 #   DOCKER_REGISTRY_PASS   from the 'ige-registry' credential
 #   GIT_COMMIT             stamped into the image as the revision label
 #   WWWUSER / WWWGROUP     uid/gid of the app account inside the image
-# Optional:
-#   APP_USER               app user inside the image (default ige-oidc).
+#   APP_USER               the account php-fpm runs as inside the image, also
+#                          from .env.production. NO DEFAULT: the deploy reads the
+#                          same key from the same file on the server, and an
+#                          image built as a different account than the one owning
+#                          oauth-private.key is a healthy container that cannot
+#                          sign a token, with no error anywhere.
 #                          Named APP_USER rather than USERNAME because zsh sets
 #                          USERNAME to the login name of whoever is running it.
 
@@ -49,12 +55,12 @@ require DOCKER_REGISTRY_PASS
 require GIT_COMMIT
 require WWWUSER
 require WWWGROUP
+require APP_USER
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$REPO_ROOT"
 
 IMAGE="${DOCKER_REGISTRY}/${DOCKER_REGISTRY_PATH}/${DOCKER_IMAGE_NAME}"
-APP_USER="${APP_USER:-ige-oidc}"
 
 echo "Image:  ${IMAGE}"
 echo "Tag:    ${DOCKER_TAG}"
@@ -143,6 +149,17 @@ docker run --rm --entrypoint /usr/sbin/apache2ctl "${IMAGE}:${DOCKER_TAG}" -t
 
 echo "  image is sane"
 echo ""
+
+# Log out however this exits -- pushed, failed, or interrupted. This is the only
+# thing that logs the AGENT in (the login in jenkins-deploy.sh runs on the
+# server), and the agent is shared, so leaving ~/.docker/config.json holding a
+# registry token would hand it to the next job on this node.
+#
+# The trap is armed BEFORE the login, so a login that half-succeeds is still
+# cleaned up. It used to be `docker logout` in the Jenkinsfile's post { always },
+# which cannot see DOCKER_REGISTRY now that it comes from a stage-scoped
+# credential -- and which never covered a failure between login and push anyway.
+trap 'docker logout "$DOCKER_REGISTRY" >/dev/null 2>&1 || true' EXIT
 
 # --password-stdin, not -p: -p puts the password in the process list, which is
 # readable by anything else running on the agent.
