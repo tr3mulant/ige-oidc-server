@@ -16,6 +16,7 @@
     "laravel/passport": "^13.8.0",
     "laravel/tinker": "^3.0.2",
     "league/flysystem-aws-s3-v3": "^3.35",
+    "resend/resend-php": "^1.13",
     "spatie/laravel-backup": "^10.3"
   },
   "require-dev": {
