@@ -55,18 +55,23 @@ RUN ln -snf /usr/share/zoneinfo/$TZ /etc/localtime && echo $TZ > /etc/timezone
 
 RUN apt-get update \
     && apt-get install -y --no-install-recommends gnupg curl ca-certificates unzip \
-       supervisor rsync gosu apache2 \
+       supervisor rsync gosu apache2 cron \
     && mkdir -p /etc/apt/keyrings \
     && curl -sSLo /tmp/debsuryorg-archive-keyring.deb https://packages.sury.org/debsuryorg-archive-keyring.deb \
     && dpkg -i /tmp/debsuryorg-archive-keyring.deb \
     && echo "deb [signed-by=/usr/share/keyrings/debsuryorg-archive-keyring.gpg] https://packages.sury.org/php/ noble main" \
        > /etc/apt/sources.list.d/php.list \
+    && curl -fsSL https://www.postgresql.org/media/keys/ACCC4CF8.asc \
+       | gpg --dearmor -o /etc/apt/keyrings/pgdg.gpg \
+    && echo "deb [signed-by=/etc/apt/keyrings/pgdg.gpg] https://apt.postgresql.org/pub/repos/apt noble-pgdg main" \
+       > /etc/apt/sources.list.d/pgdg.list \
     && apt-get update \
     && apt-get install -y --no-install-recommends \
         php8.5-cli \
         php8.5-fpm \
         php8.5-pgsql php8.5-mbstring php8.5-xml php8.5-zip \
         php8.5-bcmath php8.5-curl php8.5-intl php8.5-gd php8.5-readline \
+        postgresql-client-18 \
     && apt-get clean && rm -rf /var/lib/apt/lists/* /tmp/* /var/tmp/*
 
 RUN if getent passwd ${WWWUSER} >/dev/null; then \
@@ -108,6 +113,14 @@ RUN rm -f /etc/php/8.5/fpm/pool.d/www.conf \
     && sed -i "s/@APP_USER@/${USERNAME}/g" /etc/php/8.5/fpm/php-fpm.conf \
     && grep -E '^(user|group)[[:space:]]*=' /etc/php/8.5/fpm/php-fpm.conf \
     && mkdir -p /run/php
+
+RUN printf '%s\n' \
+        'PATH=/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin' \
+        '' \
+        "* * * * * ${USERNAME} cd /var/www/html && /usr/bin/php artisan schedule:run >> /var/www/html/storage/logs/schedule.log 2>&1" \
+        > /etc/cron.d/ige-oidc-scheduler \
+    && chmod 0644 /etc/cron.d/ige-oidc-scheduler \
+    && chown root:root /etc/cron.d/ige-oidc-scheduler
 
 COPY --chmod=0755 docker/8.5/production.start-container /usr/local/bin/start-container
 COPY --chmod=0755 docker/8.5/production.healthcheck.sh /usr/local/bin/healthcheck

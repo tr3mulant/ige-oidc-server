@@ -4,6 +4,7 @@ use App\Http\Middleware\EnsureUserIsActive;
 use App\Http\Middleware\ProtectsAuthorizationEndpoint;
 use App\Http\Middleware\RequiresTwoFactorEnrollment;
 use App\Http\Middleware\SetSecurityHeaders;
+use Illuminate\Console\Scheduling\Schedule;
 use Illuminate\Foundation\Application;
 use Illuminate\Foundation\Configuration\Exceptions;
 use Illuminate\Foundation\Configuration\Middleware;
@@ -42,6 +43,11 @@ return Application::configure(basePath: dirname(__DIR__))
             ProtectsAuthorizationEndpoint::class,
             RequiresTwoFactorEnrollment::class,
         ]);
+    })
+    ->withSchedule(function (Schedule $schedule): void {
+        $schedule->command('backup:clean')->dailyAt('01:00')->withoutOverlapping();
+        $schedule->command('backup:run')->dailyAt('01:30')->withoutOverlapping();
+        $schedule->command('backup:monitor')->dailyAt('02:00');
     })
     ->withExceptions(function (Exceptions $exceptions): void {
         /**
