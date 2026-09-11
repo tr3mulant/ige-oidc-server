@@ -91,7 +91,8 @@ return [
     'scopes' => [
         'openid' => [
             'description' => 'OpenID Connect authentication',
-            'claims' => ['sub'],
+            // `auth_time` resolves last, overwriting the issue time the package sets.
+            'claims' => ['sub', 'auth_time'],
         ],
         'profile' => [
             'description' => 'Access user profile information',

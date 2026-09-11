@@ -59,6 +59,7 @@ class User extends Authenticatable implements MustVerifyEmail, OAuthenticatable,
         return [
             'email_verified_at' => 'datetime',
             'is_active' => 'boolean',
+            'last_authenticated_at' => 'datetime',
             'password' => 'hashed',
         ];
     }
@@ -74,6 +75,7 @@ class User extends Authenticatable implements MustVerifyEmail, OAuthenticatable,
             'preferred_username' => $this->username,
             'email_verified' => $this->hasVerifiedEmail(),
             'updated_at' => $this->updated_at?->timestamp,
+            'auth_time' => $this->last_authenticated_at?->timestamp,
             default => $this->resolveDefaultOidcClaim($claim),
         };
     }

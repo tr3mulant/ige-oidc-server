@@ -235,13 +235,17 @@ test('every timestamp in the id token is a whole number of seconds', function ()
 });
 
 /**
- * `auth_time` is supposed to report when the user authenticated. `IdTokenService` sets it
- * from the clock at token-build time, so it always equals `iat`. The consequence is that
- * `max_age` — a client asking "re-authenticate if the session is older than N" — cannot be
- * relied on. Nothing uses it today; this pins why it must not start.
+ * An hour apart, because equal values would also be produced by the bug this replaced.
  */
-test('DEVIATION: auth_time reports token-issue time rather than authentication time', function () {
-    $payload = idTokenPayload(completeAuthorizationCodeFlow($this)['body']['id_token']);
+test('auth_time reports when the user authenticated, not when the token was issued', function () {
+    $user = User::factory()->twoFactorEnabled()->create([
+        'last_authenticated_at' => now()->subHour(),
+    ]);
 
-    expect($payload['auth_time'])->toBe((int) $payload['iat']);
+    $payload = idTokenPayload(
+        completeAuthorizationCodeFlow($this, 'openid profile email', null, $user)['body']['id_token']
+    );
+
+    expect($payload['auth_time'])->toBe($user->last_authenticated_at->timestamp)
+        ->and($payload['auth_time'])->toBeLessThan($payload['iat']);
 });
