@@ -1,6 +1,7 @@
 <?php
 
 use Admin9\OidcServer\Models\OidcClient;
+use App\Models\User;
 
 return [
     /*
@@ -16,10 +17,18 @@ return [
     |--------------------------------------------------------------------------
     |
     | The Eloquent model class used to look up users when generating ID tokens.
-    | Falls back to the default auth provider model if not set.
     |
     */
-    'user_model' => null,
+    /*
+     * Never null, despite the package's read looking like it tolerates one:
+     * `config('oidc-server.user_model', config('auth.providers.users.model'))` falls back
+     * only when the key is *absent*, and it never is — the package ships its own
+     * `user_model => null` and `hasConfigFile()` merges it underneath this file. Null
+     * therefore reaches `null::find()` and fatals every token exchange with a 500, while
+     * login and 2FA keep working — so only a client ever sees it, and only on the
+     * back-channel call the browser never shows.
+     */
+    'user_model' => User::class,
 
     /*
     |--------------------------------------------------------------------------
