@@ -74,7 +74,9 @@ echo ""
 echo "Running tests..."
 # --log-junit is a PHPUnit option that artisan test passes through; it feeds the
 # junit step in the Jenkinsfile. Drop both together if unwanted.
-appexec php artisan test --log-junit=tests/junit.xml
+#
+# --compact shortens a green build only; failures still print in full.
+appexec php artisan test --compact --log-junit=tests/junit.xml
 
 echo ""
 echo "✅ All tests passed"
