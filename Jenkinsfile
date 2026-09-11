@@ -16,6 +16,8 @@ pipeline {
     agent { label 'dind' }
     options {
         timestamps()
+        // Needs the AnsiColor plugin; without it the build fails before any stage runs.
+        ansiColor('xterm')
         timeout(time: 75, unit: 'MINUTES')
         buildDiscarder(logRotator(numToKeepStr: '30'))
         // COMPOSE_PROJECT_NAME is fixed, so concurrent builds would tear down
@@ -326,7 +328,14 @@ pipeline {
             // BUILD_URL is built from the Jenkins root URL, so these links are
             // only as correct as `Manage Jenkins > System > Jenkins URL`.
             catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
-                slackSend color: 'danger', message: "IdP build FAILED — ${env.JOB_NAME} #${env.BUILD_NUMBER} <${env.BUILD_URL}|open>"
+                script {
+                    // testReport/ 404s on a build that died before the suite ran, and
+                    // junit.xml is the only evidence it did. cleanWs() is in `cleanup`,
+                    // which runs after this, so the workspace is still here to ask.
+                    String tests = fileExists('tests/junit.xml') ? " <${env.BUILD_URL}testReport/|tests>" : ''
+
+                    slackSend color: 'danger', message: "IdP build FAILED — ${env.JOB_NAME} #${env.BUILD_NUMBER} <${env.BUILD_URL}|open>${tests}"
+                }
             }
         }
         fixed {
