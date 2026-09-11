@@ -2,6 +2,21 @@
 
 OIDC Server for Irongate Enterprises.
 
+## First run on a fresh clone
+
+A clone has no Passport signing key — `storage/*.key` is gitignored — so generate one
+before running the app or the suite:
+
+```bash
+sail artisan passport:keys
+```
+
+Without it, anything that issues a token fails as `LogicException: Invalid key supplied`,
+which does not mention a key file. CI generates its own throwaway key per build.
+
+Never run it with `--force` against production: that invalidates every token at every
+client.
+
 ## Registering a relying party
 
 A client is declared in the environment and registered by `php artisan clients:sync`.

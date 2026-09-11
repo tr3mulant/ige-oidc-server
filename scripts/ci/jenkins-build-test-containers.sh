@@ -206,6 +206,22 @@ appexec php artisan config:clear
 appexec php artisan route:clear
 appexec php artisan view:clear
 
+# The suite redeems authorization codes, and league/oauth2-server reports a missing
+# signing key as `LogicException: Invalid key supplied` -- which never mentions a
+# file. storage/*.key is gitignored and cleanWs() empties the workspace, so every
+# build starts without one.
+#
+# Disposable and per-build. Nothing to do with the production key on IronGate01,
+# which is generated once by hand: --force there invalidates every token at every
+# client. Guarded rather than --force here because the command exits FAILURE when a
+# key exists, which under `set -e` would kill a hand-run in a dirty workspace.
+echo "Generating the ephemeral Passport signing key..."
+if appexec test -f storage/oauth-private.key; then
+    echo "  already present, leaving it"
+else
+    appexec php artisan passport:keys --no-interaction
+fi
+
 # Reports the environment the suite will actually run under: PHP and framework
 # versions, the cache/queue/session drivers, the resolved database connection.
 # A bad or missing credential shows up here as Laravel's own error rather than
