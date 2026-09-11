@@ -114,8 +114,14 @@ check "Test 10: preferred_username is advertised as a claim" \
 # built from the scheme and host and matched by EXACT STRING (SSO plan 1.6): an
 # http:// issuer behind TLS-terminating Apache means every client's redirect
 # fails to match, which presents as a login loop rather than as an error.
+#
+# Decoded, not grepped. PHP's json_encode escapes forward slashes by default, so
+# the document contains "https:\/\/auth..." and a grep for a literal "https://
+# can never match -- this test failed on a CORRECT issuer for as long as it was
+# written that way. Test 9 already decodes; do the same here rather than
+# matching two spellings of the same URL.
 check "Test 11: the issuer is an https:// URL" \
-      'curl -fsS http://localhost/.well-known/openid-configuration | grep -qE "\"issuer\"[[:space:]]*:[[:space:]]*\"https://"'
+      'curl -fsS http://localhost/.well-known/openid-configuration | php -r "\$d = json_decode(stream_get_contents(STDIN), true); exit(is_array(\$d) && isset(\$d[\"issuer\"]) && str_starts_with(\$d[\"issuer\"], \"https://\") ? 0 : 1);"'
 
 # The authorization endpoint must redirect an unauthenticated browser to login,
 # not 500. A 500 here is the usual first symptom of a broken client
