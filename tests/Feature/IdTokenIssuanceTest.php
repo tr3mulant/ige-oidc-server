@@ -163,10 +163,18 @@ test('the id token issuer is exactly what the discovery document advertises', fu
  */
 test('the id token lifetime is the configured id_token_ttl', function () {
     $payload = idTokenPayload(completeAuthorizationCodeFlow($this)['body']['id_token']);
+    $ttl = config('oidc-server.tokens.id_token_ttl');
 
-    $lifetime = (int) round($payload['exp'] - $payload['iat']);
+    $lifetime = $payload['exp'] - $payload['iat'];
 
-    expect($lifetime)->toBe(config('oidc-server.tokens.id_token_ttl'))
+    /*
+     * The one second of slack is clock granularity, not tolerance for drift: `exp` and
+     * `iat` are two reads microseconds apart, and now that both are floored to whole
+     * seconds, a pair that straddles a second boundary loses one. Widen it further only
+     * with a reason.
+     */
+    expect($lifetime)->toBeGreaterThanOrEqual($ttl - 1)
+        ->and($lifetime)->toBeLessThanOrEqual($ttl)
         ->and($lifetime)->toBeLessThan(config('oidc-server.tokens.access_token_ttl'));
 });
 
@@ -213,15 +221,16 @@ test('DEVIATION: a nonce sent to the authorize endpoint never reaches the id tok
 });
 
 /**
- * `iat` and `exp` come back as floats while `auth_time` is an integer — the same concept
- * serialised two ways in one token. RFC 7519 permits a non-integer NumericDate, so this is
- * legal but unusual, and strict parsers have been known to reject it.
+ * RFC 7519 permits a non-integer NumericDate, so the floats were legal — but the type was
+ * decided by whether the clock happened to land on a whole second, not by anything in this
+ * codebase. Integers are what the rest of the world emits, and what `auth_time` already
+ * was.
  */
-test('DEVIATION: iat and exp are floats while auth_time is an integer', function () {
+test('every timestamp in the id token is a whole number of seconds', function () {
     $payload = idTokenPayload(completeAuthorizationCodeFlow($this)['body']['id_token']);
 
-    expect($payload['iat'])->toBeFloat()
-        ->and($payload['exp'])->toBeFloat()
+    expect($payload['iat'])->toBeInt()
+        ->and($payload['exp'])->toBeInt()
         ->and($payload['auth_time'])->toBeInt();
 });
 

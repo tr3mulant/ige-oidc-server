@@ -9,6 +9,7 @@ use Admin9\OidcServer\Services\IdTokenService;
 use DateTimeImmutable;
 use Lcobucci\JWT\ClaimsFormatter;
 use Lcobucci\JWT\Configuration;
+use Lcobucci\JWT\Encoding\ChainedFormatter;
 use Lcobucci\JWT\Encoding\JoseEncoder;
 use Lcobucci\JWT\Token\Builder;
 use League\OAuth2\Server\Entities\AccessTokenEntityInterface;
@@ -43,10 +44,16 @@ class OidcIdTokenService extends IdTokenService
         return parent::generateToken($idTokenExpiry, $user, $client, $nonce);
     }
 
+    /**
+     * The formatter the package asks for is discarded: its microsecond conversion emits
+     * `iat` and `exp` as floats, and as integers on the one-in-a-million token built on a
+     * whole second — a type decided by the clock rather than by anything here. Whole
+     * seconds also match `auth_time`, which never passes through a formatter at all.
+     */
     protected function getJwtConfig(): Configuration
     {
         return parent::getJwtConfig()->withBuilderFactory(
-            fn (ClaimsFormatter $formatter): Builder => (new Builder(new JoseEncoder, $formatter))
+            fn (ClaimsFormatter $formatter): Builder => (new Builder(new JoseEncoder, ChainedFormatter::withUnixTimestampDates()))
                 ->withHeader('kid', $this->keyId())
         );
     }
