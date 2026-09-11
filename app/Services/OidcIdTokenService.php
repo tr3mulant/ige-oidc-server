@@ -4,23 +4,45 @@ declare(strict_types=1);
 
 namespace App\Services;
 
+use Admin9\OidcServer\Contracts\OidcUserInterface;
 use Admin9\OidcServer\Services\IdTokenService;
+use DateTimeImmutable;
 use Lcobucci\JWT\ClaimsFormatter;
 use Lcobucci\JWT\Configuration;
 use Lcobucci\JWT\Encoding\JoseEncoder;
 use Lcobucci\JWT\Token\Builder;
+use League\OAuth2\Server\Entities\AccessTokenEntityInterface;
+use League\OAuth2\Server\Entities\ClientEntityInterface;
 
 /**
- * Stamps the `kid` the package omits while `jwks.json` publishes one.
+ * Two corrections to the package's ID token.
  *
- * Without it a client cannot tell which published key to verify against, so a rotation
- * can never overlap two keys — every token has to die at once instead.
+ * It names no key, though `jwks.json` publishes a `kid`, so a client cannot tell which
+ * published key to verify against and a rotation can never overlap two.
  *
- * Swapping the builder factory keeps claim and lifetime logic in the package, where
- * upgrades still reach it.
+ * And it expires with the access token, which leaves `tokens.id_token_ttl` — a lifetime
+ * the plan argued for and a test guards — read by nothing.
  */
 class OidcIdTokenService extends IdTokenService
 {
+    /**
+     * Cloned so the shorter expiry reaches the ID token alone; the access token is still
+     * the caller's and still has to outlive it.
+     */
+    public function generateToken(
+        AccessTokenEntityInterface $accessToken,
+        OidcUserInterface $user,
+        ClientEntityInterface $client,
+        ?string $nonce = null
+    ): string {
+        $idTokenExpiry = clone $accessToken;
+        $idTokenExpiry->setExpiryDateTime(
+            new DateTimeImmutable('+'.config('oidc-server.tokens.id_token_ttl').' seconds')
+        );
+
+        return parent::generateToken($idTokenExpiry, $user, $client, $nonce);
+    }
+
     protected function getJwtConfig(): Configuration
     {
         return parent::getJwtConfig()->withBuilderFactory(

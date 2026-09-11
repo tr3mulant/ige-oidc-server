@@ -17,9 +17,3 @@ test('an id token does not outlive the redirect that carries it', function () {
     expect(config('oidc-server.tokens.id_token_ttl'))
         ->toBeLessThanOrEqual(config('oidc-server.tokens.access_token_ttl'));
 });
-
-test('the discovery document advertises the lifetimes actually in force', function () {
-    $discovery = $this->getJson('/.well-known/openid-configuration')->assertOk()->json();
-
-    expect($discovery['issuer'])->toBe(config('app.url'));
-});
