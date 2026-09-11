@@ -282,6 +282,22 @@ pipeline {
                     '''
                 }
             }
+            // Stage-level, not pipeline-level. A pipeline `success` block cannot
+            // tell a completed deploy from a green branch build that never ran
+            // this stage -- and announcing a deploy that did not happen is worse
+            // than announcing nothing. This fires only if the stage itself ran
+            // and succeeded, which is exactly the event worth a message.
+            //
+            // There is deliberately no `failure` here: the pipeline-level
+            // failure block already covers every stage, and a second block would
+            // send two notifications for one broken deploy.
+            post {
+                success {
+                    catchError(buildResult: 'SUCCESS', stageResult: 'SUCCESS') {
+                        slackSend color: 'good', message: "IdP deployed to IronGate01 — `${env.DOCKER_TAG}` (build ${env.BUILD_NUMBER}) <${env.BUILD_URL}|log>"
+                    }
+                }
+            }
         }
     }
     post {
@@ -301,6 +317,22 @@ pipeline {
             // Backstop for a teardown that could not run. -v is correct here and
             // nowhere near the deploy: this is the ephemeral CI database.
             sh 'docker compose --env-file .env.testing down -v --remove-orphans 2>/dev/null || true'
+
+            // Wrapped, here and below, so a Slack outage or a bad token cannot
+            // change the build's result. Un-wrapped, a throw in `fixed` turns a
+            // green build red over a notification, and a throw here masks the
+            // real failure with a Slack stack trace.
+            //
+            // BUILD_URL is built from the Jenkins root URL, so these links are
+            // only as correct as `Manage Jenkins > System > Jenkins URL`.
+            catchError(buildResult: 'FAILURE', stageResult: 'FAILURE') {
+                slackSend color: 'danger', message: "IdP build FAILED — ${env.JOB_NAME} #${env.BUILD_NUMBER} <${env.BUILD_URL}|open>"
+            }
+        }
+        fixed {
+            catchError(buildResult: 'SUCCESS', stageResult: 'SUCCESS') {
+                slackSend color: 'good', message: "IdP build recovered — ${env.JOB_NAME} #${env.BUILD_NUMBER}"
+            }
         }
         cleanup {
             cleanWs()
