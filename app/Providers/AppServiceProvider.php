@@ -3,7 +3,10 @@
 namespace App\Providers;
 
 use Admin9\OidcServer\Services\IdTokenService;
+use App\Listeners\RecordAuthenticationTime;
 use App\Services\OidcIdTokenService;
+use Illuminate\Auth\Events\Login;
+use Illuminate\Support\Facades\Event;
 use Illuminate\Support\ServiceProvider;
 use Laravel\Passport\Passport;
 
@@ -43,5 +46,7 @@ class AppServiceProvider extends ServiceProvider
          * running it interactively could say yes to a grant nobody has reviewed.
          */
         Passport::$deviceCodeGrantEnabled = false;
+
+        Event::listen(Login::class, RecordAuthenticationTime::class);
     }
 }
