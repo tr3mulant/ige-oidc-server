@@ -159,6 +159,19 @@ test('the id token lifetime is the access token lifetime, not the configured id_
         ->and($lifetime)->not->toBe(config('oidc-server.tokens.id_token_ttl'));
 });
 
+/**
+ * Membership rather than `keys[0]`, because the point of naming the key at all is the
+ * day a rotation publishes a second one. Compared against the live JWKS because
+ * `OidcIdTokenService::keyId()` duplicates a protected method on `OidcController`.
+ */
+test('the id token names the key that signed it, and the JWKS publishes that key', function () {
+    $header = idTokenHeader(completeAuthorizationCodeFlow($this)['body']['id_token']);
+    $jwks = $this->getJson('/.well-known/jwks.json')->assertOk()->json();
+
+    expect($header)->toHaveKey('kid')
+        ->and(array_column($jwks['keys'], 'kid'))->toContain($header['kid']);
+});
+
 /*
 |--------------------------------------------------------------------------
 | Known deviations from OIDC
@@ -170,22 +183,6 @@ test('the id token lifetime is the access token lifetime, not the configured id_
 | than a silent upgrade that changes what tokens look like.
 |
 */
-
-/**
- * The JWKS advertises a `kid` (`OidcController::generateKeyId()`) naming which key signed
- * a token; `IdTokenService` sets no such header. A client library that selects its
- * verification key by `kid` cannot do so here and must fall back to the sole published
- * key. Harmless while exactly one key exists — and unfixable-by-the-client the moment a
- * second one does, which is any key rotation.
- */
-test('DEVIATION: the id token header has no kid, though the JWKS publishes one', function () {
-    $header = idTokenHeader(completeAuthorizationCodeFlow($this)['body']['id_token']);
-    $jwks = $this->getJson('/.well-known/jwks.json')->assertOk()->json();
-
-    expect($header)->not->toHaveKey('kid')
-        ->and($jwks['keys'][0])->toHaveKey('kid')
-        ->and($jwks['keys'])->toHaveCount(1);
-});
 
 /**
  * `TokenResponseType::resolveNonce()` reads `request()->input('nonce')` during the *token*
