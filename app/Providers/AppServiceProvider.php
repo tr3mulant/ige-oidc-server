@@ -2,6 +2,8 @@
 
 namespace App\Providers;
 
+use Admin9\OidcServer\Services\IdTokenService;
+use App\Services\OidcIdTokenService;
 use Illuminate\Support\ServiceProvider;
 use Laravel\Passport\Passport;
 
@@ -12,7 +14,15 @@ class AppServiceProvider extends ServiceProvider
      */
     public function register(): void
     {
-        //
+        /**
+         * Extended rather than re-bound: the package binds this abstract too, and
+         * provider registration order is not guaranteed. Extenders survive a later
+         * `bind()`; a competing binding would not.
+         */
+        $this->app->extend(
+            IdTokenService::class,
+            fn ($service, $app) => $app->make(OidcIdTokenService::class),
+        );
     }
 
     /**
