@@ -67,6 +67,19 @@ test('the endpoints a client needs are all present', function () {
         ]);
 });
 
+/**
+ * Moved here from `TokenLifetimeTest`, where it sat under a name promising a check on
+ * lifetimes — which this document does not carry and OIDC does not define.
+ *
+ * The trailing-slash assertion is not cosmetic. A client compares the `iss` claim to this
+ * string exactly, and `OidcController::discovery()` trims a trailing slash where
+ * `IdTokenService` does not, so a slash in the configured issuer splits the two apart.
+ */
+test('the issuer is the exact string a client will compare the iss claim against', function () {
+    expect($this->discovery['issuer'])->toBe(rtrim(config('app.url'), '/'))
+        ->and($this->discovery['issuer'])->not->toEndWith('/');
+});
+
 test('id tokens are signed with RS256', function () {
     expect($this->discovery['id_token_signing_alg_values_supported'])->toBe(['RS256']);
 });

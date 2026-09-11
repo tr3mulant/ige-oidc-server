@@ -9,7 +9,14 @@ return [
     | OIDC Issuer
     |--------------------------------------------------------------------------
     */
-    'issuer' => env('OIDC_ISSUER', env('APP_URL')),
+    /*
+     * Trimmed here because the two readers disagree: `OidcController::discovery()` trims
+     * a trailing slash and `IdTokenService` does not, so one in the environment publishes
+     * an `issuer` the `iss` claim does not match. A client compares those exactly, and
+     * rejects every login — with discovery, JWKS, sign-in and the token exchange all
+     * looking healthy.
+     */
+    'issuer' => rtrim((string) env('OIDC_ISSUER', env('APP_URL')), '/'),
 
     /*
     |--------------------------------------------------------------------------

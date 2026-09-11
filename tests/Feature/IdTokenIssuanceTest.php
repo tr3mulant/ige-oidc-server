@@ -144,19 +144,30 @@ test('email claims require the email scope and are absent without it', function 
 });
 
 /**
- * Measures the issued token rather than reading the config, because those disagree:
- * `IdTokenService` sets the ID token's expiry from the *access* token
- * (`expiresAt($accessToken->getExpiryDateTime())`) and never reads
- * `tokens.id_token_ttl`. This pins what is actually in force; change it deliberately if
- * the TTL is ever wired up.
+ * A client rejects a token whose `iss` is not character-for-character the `issuer` it
+ * read from discovery. Nothing guarantees that here: `OidcController::discovery()` trims
+ * a trailing slash and `IdTokenService` does not, so the two are equal only because the
+ * configured issuer happens to carry no slash.
  */
-test('the id token lifetime is the access token lifetime, not the configured id_token_ttl', function () {
+test('the id token issuer is exactly what the discovery document advertises', function () {
+    $payload = idTokenPayload(completeAuthorizationCodeFlow($this)['body']['id_token']);
+    $discovery = $this->getJson('/.well-known/openid-configuration')->assertOk()->json();
+
+    expect($payload['iss'])->toBe($discovery['issuer']);
+});
+
+/**
+ * Measured on an issued token rather than read back from the config, because that is the
+ * distinction the finding turned on: `id_token_ttl` sat unread for the life of the
+ * project while a test asserting the config value stayed green.
+ */
+test('the id token lifetime is the configured id_token_ttl', function () {
     $payload = idTokenPayload(completeAuthorizationCodeFlow($this)['body']['id_token']);
 
     $lifetime = (int) round($payload['exp'] - $payload['iat']);
 
-    expect($lifetime)->toBe(config('oidc-server.tokens.access_token_ttl'))
-        ->and($lifetime)->not->toBe(config('oidc-server.tokens.id_token_ttl'));
+    expect($lifetime)->toBe(config('oidc-server.tokens.id_token_ttl'))
+        ->and($lifetime)->toBeLessThan(config('oidc-server.tokens.access_token_ttl'));
 });
 
 /**
