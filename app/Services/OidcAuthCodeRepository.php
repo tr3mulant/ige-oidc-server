@@ -10,12 +10,9 @@ use Laravel\Passport\Passport;
 use League\OAuth2\Server\Entities\AuthCodeEntityInterface;
 
 /**
- * Persists the authorization nonce and reads it back when the code is redeemed.
- *
- * `AuthCodeGrant::respondToAccessTokenRequest()` revokes the used code before the
- * response type builds its body, so `revokeAuthCode()` is the last point that still knows
- * which code this exchange is for. Holding the value from there is what lets
- * `OidcTokenResponseType::resolveNonce()` answer without decrypting the code payload.
+ * `AuthCodeGrant` revokes the used code before the response type builds its body, so
+ * `revokeAuthCode()` is the last point that knows which code this exchange is for. That
+ * is what lets `resolveNonce()` answer without decrypting the code payload.
  */
 class OidcAuthCodeRepository extends AuthCodeRepository
 {
@@ -46,9 +43,8 @@ class OidcAuthCodeRepository extends AuthCodeRepository
     }
 
     /**
-     * Consumed rather than read: a nonce belongs to the one exchange that redeemed its
-     * code. A refresh exchange revokes no code, so leaving the value in place would put
-     * the previous login's nonce on a token OIDC Core says must carry none.
+     * Consumed, not read: a refresh exchange revokes no code, so a lingering value would
+     * land the previous login's nonce on a token that must carry none.
      */
     public function pullRedeemedNonce(): ?string
     {

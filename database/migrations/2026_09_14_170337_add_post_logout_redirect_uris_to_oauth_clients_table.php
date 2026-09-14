@@ -5,12 +5,9 @@ use Illuminate\Database\Schema\Blueprint;
 use Illuminate\Support\Facades\Schema;
 
 /**
- * Separate from `redirect_uris` because they answer different questions: one is where a
- * browser returns carrying an authorization code, the other is where a person lands after
- * signing out. Validating the second against the first rejects an app's own home page.
- *
- * Nullable, so a client that registers none simply gets no post-logout redirect — which
- * is what RP-Initiated Logout §2 requires of an unregistered value.
+ * Separate from `redirect_uris`: one is where a browser returns with an authorization
+ * code, the other where a person lands after signing out. Nullable, because §2 requires
+ * no redirect for a value a client never registered.
  */
 return new class extends Migration
 {
