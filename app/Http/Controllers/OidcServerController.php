@@ -6,31 +6,41 @@ namespace App\Http\Controllers;
 
 use Admin9\OidcServer\Http\Controllers\OidcController;
 use Illuminate\Http\JsonResponse;
+use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Laravel\Passport\Client;
 use Laravel\Passport\Passport;
 use Lcobucci\JWT\Encoding\JoseEncoder;
 use Lcobucci\JWT\Token\Parser;
 use Lcobucci\JWT\Token\Plain;
+use Symfony\Component\HttpFoundation\Response;
 use Throwable;
 
 /**
- * Corrects the package's post-logout redirect validation, which checks the wrong list
- * with the wrong comparison.
- *
- * It validates against the client's `redirect_uris` — where a browser returns with an
- * authorization code — rather than its registered post-logout URIs, and matches by path
- * prefix. So an app asking to land a signed-out user on its own home page is refused,
- * while a stray path under its callback is accepted. Both silently: a rejected URI
- * produces a redirect to this host, not an error, so a client cannot tell the two apart.
+ * The package validates `post_logout_redirect_uri` against the client's `redirect_uris`,
+ * by path prefix. RP-Initiated Logout §2 requires the client's registered post-logout
+ * URIs, matched exactly.
  */
 class OidcServerController extends OidcController
 {
     /**
-     * The package advertises whatever `post_logout_redirect_uris_supported` holds, which
-     * governs nothing. Replacing it with the registered union keeps the document honest
-     * without copying the other twenty keys.
+     * Targets the login route directly, not `/`: flash data survives one request, and
+     * `RootRedirectController` would spend it on a redirect that renders nothing. A logout
+     * leaves a guest, so that controller has only the one branch anyway.
      */
+    public function logout(Request $request): Response
+    {
+        $response = parent::logout($request);
+
+        if ($response instanceof RedirectResponse && $response->getTargetUrl() === url('/')) {
+            return $response->setTargetUrl(route('login'))
+                ->with('status', __('You have been signed out.'));
+        }
+
+        return $response;
+    }
+
+    /** Editing the parent's output keeps the advertised list honest without copying it. */
     public function discovery(): JsonResponse
     {
         $response = parent::discovery();
@@ -43,10 +53,8 @@ class OidcServerController extends OidcController
     }
 
     /**
-     * Ignores the list the parent hands over. RP-Initiated Logout §2 requires an exact
-     * match against the URIs registered *by the requesting client*, and requires no
-     * redirect at all when that client cannot be identified — so an absent or unusable
-     * `id_token_hint` fails closed rather than falling back to this host's own URL.
+     * No identifiable client means no redirect at all — §2 forbids one the OP cannot
+     * confirm.
      *
      * @param  list<string>  $allowedUris  the parent's `redirect_uris`, deliberately unused
      */
@@ -61,10 +69,7 @@ class OidcServerController extends OidcController
         return in_array($uri, $client->post_logout_redirect_uris ?? [], true);
     }
 
-    /**
-     * Re-read rather than passed down: the parent resolves the same client in `logout()`
-     * and discards it before validating.
-     */
+    /** Re-read because the parent resolves the same client and discards it before validating. */
     protected function clientFromIdTokenHint(Request $request): ?Client
     {
         $hint = $request->query('id_token_hint');

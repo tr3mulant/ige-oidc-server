@@ -7,9 +7,8 @@ use Illuminate\Http\Request;
 use Symfony\Component\HttpFoundation\Response;
 
 /**
- * The auth code is not always written by the request that carried the nonce: with
- * `prompt=consent` it is written by the approve POST, and the `authRequest` Passport
- * serialises in between is a league object with no nonce concept. The session spans both.
+ * With `prompt=consent` the code is written by the approve POST, which carries no nonce,
+ * and the `authRequest` in between is a league object with no nonce concept.
  */
 class RemembersAuthorizationNonce
 {

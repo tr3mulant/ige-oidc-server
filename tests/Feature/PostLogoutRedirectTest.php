@@ -1,13 +1,9 @@
 <?php
 
 /**
- * The package validates `post_logout_redirect_uri` against the client's `redirect_uris`
- * by path prefix. Both halves are wrong, and both fail quiet: a rejected URI produces a
- * redirect to this host rather than an error, so a client cannot tell "my post-logout
- * redirect worked" from "my post-logout redirect was ignored".
- *
- * These drive the real endpoint with a real `id_token_hint`, because the defect is only
- * observable in what the Location header says.
+ * Driven through the real endpoint with a real `id_token_hint`: the defect is only
+ * observable in the Location header, and it fails quiet — a refused URI redirects rather
+ * than erroring.
  */
 
 use App\Models\OidcClient;
@@ -32,10 +28,7 @@ function registerLogoutClient(array $postLogoutUris = ['https://tools.example.co
     ]);
 }
 
-/**
- * Only `aud` is read, and the package parses the hint without verifying its signature, so
- * this is signed with the real key purely to stay a well-formed token.
- */
+/** Signed with the real key only to stay well-formed; the hint is parsed unverified. */
 function idTokenHintFor(OidcClient $client): string
 {
     return (new Builder(new JoseEncoder, ChainedFormatter::withUnixTimestampDates()))
@@ -58,10 +51,7 @@ function logoutTo(object $test, ?string $postLogoutRedirectUri, ?OidcClient $cli
         ->headers->get('Location');
 }
 
-/**
- * The finding itself. A client's own home page is not under its callback path, so the
- * prefix match refused it and dropped the user on this host instead.
- */
+/** The finding itself: a home page is not under the callback path, so it was refused. */
 test('a registered post-logout redirect uri is honoured', function () {
     $client = registerLogoutClient();
 
@@ -69,58 +59,44 @@ test('a registered post-logout redirect uri is honoured', function () {
         ->toBe('https://tools.example.com/');
 });
 
-/**
- * RP-Initiated Logout §2 requires an exact match. The prefix rule accepted anything under
- * the allowed path, which is how a stray URL became a valid logout destination.
- */
+/** §2 requires an exact match; the prefix rule accepted anything below the path. */
 test('a uri under a registered one is not accepted', function () {
     $client = registerLogoutClient(['https://tools.example.com/signed-out']);
 
     expect(logoutTo($this, 'https://tools.example.com/signed-out/again', $client))
-        ->toBe(url('/'));
+        ->toBe(route('login'));
 });
 
-/**
- * The OAuth callback is registered as a `redirect_uri`, not a post-logout one. That it is
- * no longer accepted is the point: the two lists are separate.
- */
+/** The two lists are separate, so a registered callback is not a logout destination. */
 test('a redirect uri is not by itself a valid post-logout destination', function () {
     $client = registerLogoutClient();
 
     expect(logoutTo($this, 'https://tools.example.com/auth/callback', $client))
-        ->toBe(url('/'));
+        ->toBe(route('login'));
 });
 
-/**
- * "the OP MUST NOT perform post-logout redirection unless the OP has other means of
- * confirming the legitimacy of the post-logout redirection target." Without the hint
- * there is no client to confirm against.
- */
+/** §2: no redirect the OP cannot confirm, and without the hint there is no client. */
 test('no redirect is performed without an id_token_hint', function () {
     registerLogoutClient();
 
-    expect(logoutTo($this, 'https://tools.example.com/'))->toBe(url('/'));
+    expect(logoutTo($this, 'https://tools.example.com/'))->toBe(route('login'));
 });
 
-/**
- * One client must not be able to send a user to another's landing page.
- */
+/** One client must not be able to send a user to another's landing page. */
 test('a uri registered by a different client is refused', function () {
     registerLogoutClient(['https://tools.example.com/']);
     $other = registerLogoutClient(['https://app.example.com/intranet/']);
 
-    expect(logoutTo($this, 'https://tools.example.com/', $other))->toBe(url('/'));
+    expect(logoutTo($this, 'https://tools.example.com/', $other))->toBe(route('login'));
 });
 
 test('a foreign host is refused', function () {
     $client = registerLogoutClient();
 
-    expect(logoutTo($this, 'https://evil.example.com/', $client))->toBe(url('/'));
+    expect(logoutTo($this, 'https://evil.example.com/', $client))->toBe(route('login'));
 });
 
-/**
- * `state` is how a client correlates the logout it started with the arrival it gets back.
- */
+/** `state` is how a client correlates the logout it started with the arrival back. */
 test('state is carried through to an honoured redirect', function () {
     $client = registerLogoutClient();
 
@@ -134,9 +110,7 @@ test('state is carried through to an honoured redirect', function () {
     expect($location)->toBe('https://tools.example.com/?state=xyz-123');
 });
 
-/**
- * Whatever the redirect decision, the session must be gone — that is the logout.
- */
+/** Whatever the redirect decision, the session must be gone — that is the logout. */
 test('the session is invalidated even when the redirect is refused', function () {
     $client = registerLogoutClient();
 
@@ -150,9 +124,37 @@ test('the session is invalidated even when the redirect is refused', function ()
 });
 
 /**
- * The package advertised whatever the config key held — an empty array — while validating
- * against something else entirely. Discovery now reports what is actually honoured.
+ * Asserted on the rendered page rather than the session: flash survives one request, so
+ * an extra redirect would spend it before anything displayed it.
  */
+test('a refused redirect says the user was signed out', function () {
+    $client = registerLogoutClient();
+
+    $this->actingAs(User::factory()->twoFactorEnabled()->create())
+        ->get('/oauth/logout?'.http_build_query([
+            'post_logout_redirect_uri' => 'https://evil.example.com/',
+            'id_token_hint' => idTokenHintFor($client),
+        ]))
+        ->assertRedirect(route('login'))
+        ->assertSessionHas('status', 'You have been signed out.');
+
+    $this->get(route('login'))->assertSee('You have been signed out.');
+});
+
+/** The message belongs to the fallback alone. */
+test('an honoured redirect carries no signed-out message', function () {
+    $client = registerLogoutClient();
+
+    $this->actingAs(User::factory()->twoFactorEnabled()->create())
+        ->get('/oauth/logout?'.http_build_query([
+            'post_logout_redirect_uri' => 'https://tools.example.com/',
+            'id_token_hint' => idTokenHintFor($client),
+        ]))
+        ->assertRedirect('https://tools.example.com/')
+        ->assertSessionMissing('status');
+});
+
+/** The advertised list previously governed nothing. */
 test('discovery advertises the post-logout uris the clients registered', function () {
     registerLogoutClient(['https://tools.example.com/']);
     registerLogoutClient(['https://app.example.com/intranet/', 'https://tools.example.com/']);

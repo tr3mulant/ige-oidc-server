@@ -8,9 +8,8 @@ use Admin9\OidcServer\Services\IdTokenService;
 use Admin9\OidcServer\Services\TokenResponseType;
 
 /**
- * The package reads `nonce` off the current request, but that is the back-channel token
- * request, which never carries one — so a nonce sent to `/oauth/authorize` was accepted
- * and dropped, and any client enforcing the round-trip rejected every login.
+ * The package reads `nonce` off the token request, which never carries one, so the value
+ * sent to `/oauth/authorize` was accepted and dropped.
  */
 class OidcTokenResponseType extends TokenResponseType
 {

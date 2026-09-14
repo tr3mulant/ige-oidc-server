@@ -4,10 +4,7 @@ namespace App\Models;
 
 use Admin9\OidcServer\Models\OidcClient as BaseOidcClient;
 
-/**
- * `casts()` rather than `$casts`: the property would replace Passport's outright, taking
- * `redirect_uris` and `grant_types` with it. Eloquent merges the two (`HasAttributes:210`).
- */
+/** `casts()` rather than `$casts`: the property would replace Passport's outright. */
 class OidcClient extends BaseOidcClient
 {
     /**
