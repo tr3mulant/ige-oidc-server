@@ -10,12 +10,13 @@
  */
 
 use App\Models\User;
+use Laravel\Passport\Client;
 use Laravel\Passport\ClientRepository;
 
 /**
  * Drives /oauth/authorize -> /oauth/token and returns the decoded token response.
  *
- * @return array{status: int, body: array<string, mixed>|null}
+ * @return array{status: int, body: array<string, mixed>|null, client: Client}
  */
 function completeAuthorizationCodeFlow(object $test, string $scope = 'openid profile email', ?string $nonce = null, ?User $as = null): array
 {
@@ -52,7 +53,7 @@ function completeAuthorizationCodeFlow(object $test, string $scope = 'openid pro
         'code_verifier' => $verifier,
     ]);
 
-    return ['status' => $response->getStatusCode(), 'body' => $response->json()];
+    return ['status' => $response->getStatusCode(), 'body' => $response->json(), 'client' => $client];
 }
 
 /** @return array<string, mixed> */
@@ -191,33 +192,104 @@ test('the id token names the key that signed it, and the JWKS publishes that key
         ->and(array_column($jwks['keys'], 'kid'))->toContain($header['kid']);
 });
 
-/*
-|--------------------------------------------------------------------------
-| Known deviations from OIDC
-|--------------------------------------------------------------------------
-|
-| These pin behaviour that is wrong, not behaviour that is wanted. They exist so the
-| deviations are discovered here rather than inside a client library, and so that fixing
-| one is a deliberate act that breaks a test and prompts a client-side change, rather
-| than a silent upgrade that changes what tokens look like.
-|
-*/
-
 /**
- * `TokenResponseType::resolveNonce()` reads `request()->input('nonce')` during the *token*
- * request, but a nonce is sent on the *authorize* request — and neither Passport nor
- * league/oauth2-server persists one alongside the authorization code. So it is accepted
- * and dropped. A client must therefore not require the nonce to come back; one configured
- * to enforce it rejects every login.
+ * The round-trip a strict client library enforces, and the one criterion this IdP used to
+ * fail: the nonce was read off the token request, which never carries one.
  */
-test('DEVIATION: a nonce sent to the authorize endpoint never reaches the id token', function () {
+test('a nonce sent to the authorize endpoint comes back in the id token', function () {
     $nonce = 'nonce-'.bin2hex(random_bytes(8));
 
     $payload = idTokenPayload(
         completeAuthorizationCodeFlow($this, 'openid profile email', $nonce)['body']['id_token']
     );
 
+    expect($payload['nonce'])->toBe($nonce);
+});
+
+/**
+ * OIDC Core forbids the claim when the client sent no nonce, so an empty string or null
+ * is not an acceptable stand-in for absence.
+ */
+test('no nonce claim is issued when the client sends none', function () {
+    $payload = idTokenPayload(completeAuthorizationCodeFlow($this)['body']['id_token']);
+
     expect($payload)->not->toHaveKey('nonce');
+});
+
+/**
+ * The nonce is held in the session between the authorize request and the auth code, so
+ * the failure mode is a stale one leaking into the next login on the same browser.
+ */
+test('a nonce is not carried into a later authorization that omits one', function () {
+    completeAuthorizationCodeFlow($this, 'openid profile email', 'nonce-'.bin2hex(random_bytes(8)));
+
+    $second = completeAuthorizationCodeFlow($this);
+
+    expect(idTokenPayload($second['body']['id_token']))->not->toHaveKey('nonce');
+});
+
+/**
+ * A refresh exchange redeems no authorization code, and OIDC Core says the ID token it
+ * mints should carry no nonce.
+ */
+test('an id token minted from a refresh token carries no nonce', function () {
+    $first = completeAuthorizationCodeFlow($this, 'openid profile email', 'nonce-'.bin2hex(random_bytes(8)));
+
+    $refreshed = $this->post('/oauth/token', [
+        'grant_type' => 'refresh_token',
+        'refresh_token' => $first['body']['refresh_token'],
+        'client_id' => $first['client']->getKey(),
+        'client_secret' => $first['client']->plainSecret,
+        'scope' => 'openid profile email',
+    ])->json();
+
+    expect(idTokenPayload($refreshed['id_token']))->not->toHaveKey('nonce');
+});
+
+/**
+ * `prompt=consent` moves code issuance to the approve POST, which carries only
+ * `auth_token` and `state` — the reason the nonce goes through the session rather than
+ * being read off whichever request happens to write the code.
+ */
+test('the nonce survives a consent screen, where a later request writes the code', function () {
+    $redirectUri = 'https://tools.example.com/auth/callback';
+    $client = app(ClientRepository::class)
+        ->createAuthorizationCodeGrantClient('Consent '.uniqid(), [$redirectUri], true);
+
+    $nonce = 'nonce-'.bin2hex(random_bytes(8));
+    $verifier = str_repeat('a', 64);
+    $challenge = rtrim(strtr(base64_encode(hash('sha256', $verifier, true)), '+/', '-_'), '=');
+
+    $this->actingAs(User::factory()->twoFactorEnabled()->create())
+        ->get('/oauth/authorize?'.http_build_query([
+            'client_id' => $client->getKey(),
+            'redirect_uri' => $redirectUri,
+            'response_type' => 'code',
+            'scope' => 'openid profile email',
+            'state' => 'state-123',
+            'nonce' => $nonce,
+            'prompt' => 'consent',
+            'code_challenge' => $challenge,
+            'code_challenge_method' => 'S256',
+        ]))->assertOk();
+
+    $redirect = $this->post('/oauth/authorize', [
+        'auth_token' => session('authToken'),
+        'state' => 'state-123',
+    ]);
+
+    parse_str((string) parse_url($redirect->headers->get('Location'), PHP_URL_QUERY), $returned);
+
+    $body = $this->post('/oauth/token', [
+        'grant_type' => 'authorization_code',
+        'code' => $returned['code'] ?? '',
+        'redirect_uri' => $redirectUri,
+        'client_id' => $client->getKey(),
+        'client_secret' => $client->plainSecret,
+        'code_verifier' => $verifier,
+    ])->json();
+
+    expect(idTokenPayload($body['id_token'])['nonce'])->toBe($nonce);
 });
 
 /**

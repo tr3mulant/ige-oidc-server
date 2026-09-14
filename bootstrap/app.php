@@ -2,6 +2,7 @@
 
 use App\Http\Middleware\EnsureUserIsActive;
 use App\Http\Middleware\ProtectsAuthorizationEndpoint;
+use App\Http\Middleware\RemembersAuthorizationNonce;
 use App\Http\Middleware\RequiresTwoFactorEnrollment;
 use App\Http\Middleware\SetSecurityHeaders;
 use Illuminate\Console\Scheduling\Schedule;
@@ -33,15 +34,18 @@ return Application::configure(basePath: dirname(__DIR__))
          * endpoint that issues tokens for every client application.
          *
          * Order is deliberate. `SetSecurityHeaders` is first so that its response pass
-         * runs last, decorating the redirects the other three produce as well as normal
+         * runs last, decorating the redirects the others produce as well as normal
          * responses. Then a deactivated account is ejected before anything else
          * considers it; then the authorization endpoint's own gate; then enrollment.
+         * `RemembersAuthorizationNonce` is last: only a request that survives those gates
+         * can reach the code that the nonce belongs to.
          */
         $middleware->web(append: [
             SetSecurityHeaders::class,
             EnsureUserIsActive::class,
             ProtectsAuthorizationEndpoint::class,
             RequiresTwoFactorEnrollment::class,
+            RemembersAuthorizationNonce::class,
         ]);
     })
     ->withSchedule(function (Schedule $schedule): void {
