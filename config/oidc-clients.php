@@ -17,10 +17,21 @@
  *     OIDC_CLIENT_LEGACY_SECRET="40 or so random characters"
  *     OIDC_CLIENT_LEGACY_NAME="Legacy intranet (app.example.com)"
  *     OIDC_CLIENT_LEGACY_REDIRECT_URIS="https://app.example.com/intranet/redirect_uri"
+ *     OIDC_CLIENT_LEGACY_POST_LOGOUT_REDIRECT_URIS="https://app.example.com/intranet/"
  *
- * `_REDIRECT_URIS` is itself comma-separated. Redirect matching is exact, so register
- * the URI the client actually sends, and keep environments on separate clients rather
- * than adding a second URI to a production one.
+ * Both URI lists are comma-separated, and both match exactly, so register the URI the
+ * client actually sends and keep environments on separate clients rather than adding a
+ * second URI to a production one.
+ *
+ * They are separate lists because they answer different questions: `_REDIRECT_URIS` is
+ * where a browser returns carrying an authorization code, `_POST_LOGOUT_REDIRECT_URIS` is
+ * where a person lands after signing out. An app's home page belongs in the second and
+ * must not be added to the first — a redirect URI is a valid OAuth destination, which a
+ * logout landing page has no reason to be.
+ *
+ * `_POST_LOGOUT_REDIRECT_URIS` is optional. A client that registers none gets no
+ * post-logout redirect, which is what RP-Initiated Logout §2 requires of an unregistered
+ * value.
  *
  * Adding an application is a slug and four variables — no code change and no migration.
  * That is the property §1.6 of the SSO plan is buying.
@@ -39,6 +50,11 @@ $slugs = array_filter(
 
 $clients = [];
 
+$uriList = static fn (?string $value): array => array_values(array_filter(
+    array_map(trim(...), explode(',', (string) $value)),
+    static fn (string $uri): bool => $uri !== '',
+));
+
 foreach ($slugs as $slug) {
     $prefix = 'OIDC_CLIENT_'.strtoupper(str_replace('-', '_', $slug));
 
@@ -46,10 +62,8 @@ foreach ($slugs as $slug) {
         'id' => env($prefix.'_ID'),
         'secret' => env($prefix.'_SECRET'),
         'name' => env($prefix.'_NAME'),
-        'redirect_uris' => array_values(array_filter(
-            array_map(trim(...), explode(',', (string) env($prefix.'_REDIRECT_URIS', ''))),
-            static fn (string $uri): bool => $uri !== '',
-        )),
+        'redirect_uris' => $uriList(env($prefix.'_REDIRECT_URIS', '')),
+        'post_logout_redirect_uris' => $uriList(env($prefix.'_POST_LOGOUT_REDIRECT_URIS', '')),
     ];
 }
 

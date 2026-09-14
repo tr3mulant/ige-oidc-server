@@ -2,8 +2,10 @@
 
 namespace App\Providers;
 
+use Admin9\OidcServer\Http\Controllers\OidcController;
 use Admin9\OidcServer\Services\IdTokenService;
 use Admin9\OidcServer\Services\TokenResponseType;
+use App\Http\Controllers\OidcServerController;
 use App\Listeners\RecordAuthenticationTime;
 use App\Services\OidcAuthCodeRepository;
 use App\Services\OidcIdTokenService;
@@ -43,6 +45,12 @@ class AppServiceProvider extends ServiceProvider
             TokenResponseType::class,
             fn ($responseType, $app) => $app->make(OidcTokenResponseType::class),
         );
+
+        /**
+         * The package's routes name its controller directly, and controllers resolve
+         * through the container, so this substitutes ours without touching them.
+         */
+        $this->app->bind(OidcController::class, OidcServerController::class);
     }
 
     /**

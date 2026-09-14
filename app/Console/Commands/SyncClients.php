@@ -31,8 +31,9 @@ use Laravel\Passport\Passport;
  * What it will and will not change, and why the line falls where it does:
  *
  * - An absent client is created.
- * - Name and redirect URIs are updated to match configuration. They are non-secret and
- *   reviewable, and keeping them in step is what makes this a sync rather than a seed.
+ * - Name, redirect URIs and post-logout redirect URIs are updated to match
+ *   configuration. They are non-secret and reviewable, and keeping them in step is what
+ *   makes this a sync rather than a seed.
  * - The secret is never rewritten without `--rotate-secret`. Rotation takes the IdP,
  *   the vhost and the client application out of agreement until all three carry the new
  *   value, so it stays a deliberate act rather than a side effect of a deploy.
@@ -80,7 +81,7 @@ class SyncClients extends Command
     }
 
     /**
-     * @param  array{id: string, secret: string, name: string, redirect_uris: list<string>}|mixed  $definition
+     * @param  array{id: string, secret: string, name: string, redirect_uris: list<string>, post_logout_redirect_uris: list<string>}|mixed  $definition
      */
     protected function sync(string $slug, mixed $definition): bool
     {
@@ -98,7 +99,7 @@ class SyncClients extends Command
     }
 
     /**
-     * @return array{id: string, secret: string, name: string, redirect_uris: list<string>}|null
+     * @return array{id: string, secret: string, name: string, redirect_uris: list<string>, post_logout_redirect_uris: list<string>}|null
      */
     protected function validated(string $slug, mixed $definition): ?array
     {
@@ -121,6 +122,8 @@ class SyncClients extends Command
                 'name' => ['required', 'string', 'max:255'],
                 'redirect_uris' => ['required', 'array', 'min:1'],
                 'redirect_uris.*' => ['required', 'string', 'url:http,https'],
+                'post_logout_redirect_uris' => ['present', 'array'],
+                'post_logout_redirect_uris.*' => ['required', 'string', 'url:http,https'],
             ],
             attributes: [
                 'id' => $prefix.'_ID',
@@ -128,6 +131,8 @@ class SyncClients extends Command
                 'name' => $prefix.'_NAME',
                 'redirect_uris' => $prefix.'_REDIRECT_URIS',
                 'redirect_uris.*' => $prefix.'_REDIRECT_URIS',
+                'post_logout_redirect_uris' => $prefix.'_POST_LOGOUT_REDIRECT_URIS',
+                'post_logout_redirect_uris.*' => $prefix.'_POST_LOGOUT_REDIRECT_URIS',
             ],
         );
 
@@ -139,7 +144,7 @@ class SyncClients extends Command
             return null;
         }
 
-        /** @var array{id: string, secret: string, name: string, redirect_uris: list<string>} $valid */
+        /** @var array{id: string, secret: string, name: string, redirect_uris: list<string>, post_logout_redirect_uris: list<string>} $valid */
         $valid = $validator->validated();
 
         foreach ($valid['redirect_uris'] as $uri) {
@@ -148,11 +153,17 @@ class SyncClients extends Command
             }
         }
 
+        foreach ($valid['post_logout_redirect_uris'] as $uri) {
+            if (! str_starts_with($uri, 'https://')) {
+                $this->components->warn("{$slug}: {$uri} is not https, so a signed-out user is handed to a plaintext page.");
+            }
+        }
+
         return $valid;
     }
 
     /**
-     * @param  array{id: string, secret: string, name: string, redirect_uris: list<string>}  $definition
+     * @param  array{id: string, secret: string, name: string, redirect_uris: list<string>, post_logout_redirect_uris: list<string>}  $definition
      */
     protected function register(string $slug, array $definition): bool
     {
@@ -173,6 +184,7 @@ class SyncClients extends Command
             'name' => $definition['name'],
             'secret' => $definition['secret'],
             'redirect_uris' => $definition['redirect_uris'],
+            'post_logout_redirect_uris' => $definition['post_logout_redirect_uris'],
             'grant_types' => self::GRANT_TYPES,
             'revoked' => false,
         ])->save();
@@ -183,7 +195,7 @@ class SyncClients extends Command
     }
 
     /**
-     * @param  array{id: string, secret: string, name: string, redirect_uris: list<string>}  $definition
+     * @param  array{id: string, secret: string, name: string, redirect_uris: list<string>, post_logout_redirect_uris: list<string>}  $definition
      */
     protected function verify(string $slug, array $definition, Client $client): bool
     {
@@ -227,7 +239,7 @@ class SyncClients extends Command
     }
 
     /**
-     * @param  array{id: string, secret: string, name: string, redirect_uris: list<string>}  $definition
+     * @param  array{id: string, secret: string, name: string, redirect_uris: list<string>, post_logout_redirect_uris: list<string>}  $definition
      */
     protected function reconcileSecret(string $slug, array $definition, Client $client): bool
     {
@@ -258,7 +270,7 @@ class SyncClients extends Command
     }
 
     /**
-     * @param  array{id: string, secret: string, name: string, redirect_uris: list<string>}  $definition
+     * @param  array{id: string, secret: string, name: string, redirect_uris: list<string>, post_logout_redirect_uris: list<string>}  $definition
      */
     protected function syncAttributes(string $slug, array $definition, Client $client): void
     {
@@ -276,6 +288,17 @@ class SyncClients extends Command
             ));
 
             $client->redirect_uris = $definition['redirect_uris'];
+        }
+
+        if (($client->post_logout_redirect_uris ?? []) !== $definition['post_logout_redirect_uris']) {
+            $this->components->info(sprintf(
+                '%s: post-logout redirect URIs [%s] become [%s].',
+                $slug,
+                implode(', ', $client->post_logout_redirect_uris ?? []),
+                implode(', ', $definition['post_logout_redirect_uris']),
+            ));
+
+            $client->post_logout_redirect_uris = $definition['post_logout_redirect_uris'];
         }
 
         if ($client->isDirty()) {

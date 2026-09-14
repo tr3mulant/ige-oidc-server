@@ -1,6 +1,6 @@
 <?php
 
-use Admin9\OidcServer\Models\OidcClient;
+use App\Models\OidcClient;
 use App\Models\User;
 
 return [
@@ -77,8 +77,9 @@ return [
     | Client Model
     |--------------------------------------------------------------------------
     |
-    | The Passport Client model class. The default OidcClient skips the
-    | authorization prompt for first-party clients.
+    | The Passport Client model class. The package's OidcClient skips the
+    | authorization prompt for first-party clients; this subclass adds the
+    | `post_logout_redirect_uris` cast.
     |
     */
     'client_model' => OidcClient::class,
@@ -251,6 +252,12 @@ return [
     | Post Logout Redirect URIs
     |--------------------------------------------------------------------------
     */
+    /*
+     * Left empty on purpose. RP-Initiated Logout registers these per relying party, so
+     * they are declared in `config/oidc-clients.php` and enforced against the client the
+     * `id_token_hint` names. `OidcServerController::discovery()` replaces this key with
+     * the registered union, so what is advertised is what is honoured.
+     */
     'post_logout_redirect_uris_supported' => [],
 
     /*

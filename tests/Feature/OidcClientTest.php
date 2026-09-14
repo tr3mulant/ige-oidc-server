@@ -1,6 +1,7 @@
 <?php
 
-use Admin9\OidcServer\Models\OidcClient;
+use Admin9\OidcServer\Models\OidcClient as PackageOidcClient;
+use App\Models\OidcClient;
 use App\Models\User;
 use Laravel\Passport\Passport;
 
@@ -31,9 +32,16 @@ function createIdpClient(string $name, string $redirectUri): OidcClient
     return OidcClient::where('name', $name)->sole();
 }
 
-test('the package client model is the one Passport uses', function () {
+/**
+ * Subclassed for the `post_logout_redirect_uris` cast, so the inheritance is asserted too:
+ * the consent-skip every test below relies on lives on the package's model, and a
+ * replacement that stopped extending it would put a consent screen in front of every
+ * sign-in without failing anything else here.
+ */
+test('the client model Passport uses is ours, and still extends the package model', function () {
     expect(config('oidc-server.client_model'))->toBe(OidcClient::class)
-        ->and(Passport::clientModel())->toBe(OidcClient::class);
+        ->and(Passport::clientModel())->toBe(OidcClient::class)
+        ->and(new OidcClient)->toBeInstanceOf(PackageOidcClient::class);
 });
 
 test('a bare passport:client is an authorization code client with refresh', function () {

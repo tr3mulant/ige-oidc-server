@@ -1,6 +1,6 @@
 <?php
 
-use Admin9\OidcServer\Models\OidcClient;
+use App\Models\OidcClient;
 use Illuminate\Support\Facades\Hash;
 
 /**
@@ -17,6 +17,7 @@ function configureClient(array $overrides = [], string $slug = 'tools'): array
         'secret' => 'tools-secret-'.str_repeat('a', 32),
         'name' => 'Tools (tools.example.com)',
         'redirect_uris' => ['https://tools.example.com/auth/callback'],
+        'post_logout_redirect_uris' => ['https://tools.example.com/'],
     ], $overrides);
 
     config()->set('oidc-clients.clients', [$slug => $definition]);
@@ -108,6 +109,7 @@ test('it brings the name and redirect uris into line with configuration', functi
     configureClient([
         'name' => 'Tools',
         'redirect_uris' => ['https://tools.example.com/auth/callback', 'https://tools.example.com/oidc/callback'],
+        'post_logout_redirect_uris' => ['https://tools.example.com/', 'https://tools.example.com/signed-out'],
     ]);
 
     $this->artisan('clients:sync')->assertSuccessful();
@@ -118,7 +120,23 @@ test('it brings the name and redirect uris into line with configuration', functi
         ->and($client->redirect_uris)->toBe([
             'https://tools.example.com/auth/callback',
             'https://tools.example.com/oidc/callback',
+        ])
+        ->and($client->post_logout_redirect_uris)->toBe([
+            'https://tools.example.com/',
+            'https://tools.example.com/signed-out',
         ]);
+});
+
+/**
+ * A client that registers none gets no post-logout redirect at all, so the empty case has
+ * to survive registration rather than being rejected alongside a missing redirect URI.
+ */
+test('a client may register no post-logout redirect uris', function () {
+    $definition = configureClient(['post_logout_redirect_uris' => []]);
+
+    $this->artisan('clients:sync')->assertSuccessful();
+
+    expect(OidcClient::findOrFail($definition['id'])->post_logout_redirect_uris)->toBe([]);
 });
 
 /**
@@ -213,6 +231,8 @@ test('it refuses a definition the environment got wrong, and registers nothing',
     'no redirect uri' => [['redirect_uris' => []]],
     'a redirect uri that is not a url' => [['redirect_uris' => ['tools.example.com/auth/callback']]],
     'a redirect uri with a scheme that is not http' => [['redirect_uris' => ['javascript:alert(1)']]],
+    'a post-logout redirect uri that is not a url' => [['post_logout_redirect_uris' => ['tools.example.com']]],
+    'a post-logout redirect uri with a scheme that is not http' => [['post_logout_redirect_uris' => ['javascript:alert(1)']]],
 ]);
 
 /**
