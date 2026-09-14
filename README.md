@@ -26,7 +26,9 @@ that is absent and verifies one that already exists.
 Declaring a client takes **two edits, both required**:
 
 1. Add a slug of your choosing to `OIDC_CLIENTS`, comma-separated for several.
-2. Add all four `OIDC_CLIENT_<SLUG>_*` variables for that slug, slug uppercased.
+2. Add the `OIDC_CLIENT_<SLUG>_*` variables for that slug, slug uppercased. Four are
+   required — `_ID`, `_SECRET`, `_NAME`, `_REDIRECT_URIS` — and
+   `_POST_LOGOUT_REDIRECT_URIS` is optional.
 
 A slug listed with no variables behind it fails validation. Variables whose slug is not
 listed are never read. An empty `OIDC_CLIENTS` registers nothing and the command no-ops.
@@ -54,7 +56,7 @@ symptom is a login that quietly stops working rather than an error.
 
 ### Worked example
 
-Two clients means nine lines:
+Two clients, both with a logout landing page:
 
 ```dotenv
 OIDC_CLIENTS=legacy,tools
@@ -63,11 +65,13 @@ OIDC_CLIENT_LEGACY_ID=9b1deb4d-3b7d-4bad-9bdd-2b0d7b3dcb6d
 OIDC_CLIENT_LEGACY_SECRET=8f3a1c7e94b06d25af18e3c70b9d4a62f5138ec0
 OIDC_CLIENT_LEGACY_NAME="Legacy intranet (app.example.com)"
 OIDC_CLIENT_LEGACY_REDIRECT_URIS=https://app.example.com/intranet/redirect_uri
+OIDC_CLIENT_LEGACY_POST_LOGOUT_REDIRECT_URIS=https://app.example.com/intranet/
 
 OIDC_CLIENT_TOOLS_ID=3f2504e0-4f89-41d3-9a0c-0305e82c3301
 OIDC_CLIENT_TOOLS_SECRET=c04b7d19e6a35f82041de9b7c3628af5019d4e7b
 OIDC_CLIENT_TOOLS_NAME="Tools (tools.example.com)"
 OIDC_CLIENT_TOOLS_REDIRECT_URIS=https://tools.example.com/auth/callback
+OIDC_CLIENT_TOOLS_POST_LOGOUT_REDIRECT_URIS=https://tools.example.com/
 ```
 
 Quote `_NAME` when it contains spaces.
@@ -82,12 +86,38 @@ The variable accepts a comma-separated list only because Passport stores redirec
 an array. The one time that is useful is moving a client's callback path: register both
 for the length of the cutover, then drop the old one and re-run the command.
 
+### Post-logout redirect URIs
+
+`_POST_LOGOUT_REDIRECT_URIS` is where a person lands **after signing out** — normally the
+client's own home page. It is a different list from `_REDIRECT_URIS`, which is where a
+browser returns **carrying an authorization code**, and the two must not be conflated:
+adding a logout landing page to `_REDIRECT_URIS` would also make it a valid OAuth redirect
+target.
+
+It is optional, comma-separated, and matched **exactly**, the same way redirect URIs are.
+A client that registers none simply gets no post-logout redirect.
+
+Three rules follow from [RP-Initiated Logout §2][rp-logout], and all three fail closed by
+landing the user on this host instead:
+
+- The client must send `id_token_hint` on the logout request. Without it there is no
+  client to confirm the destination against, and the spec forbids redirecting.
+- The `post_logout_redirect_uri` must match one this client registered — not one another
+  client registered.
+- It must match exactly. A URI *under* a registered path is not accepted.
+
+What is registered is also what `/.well-known/openid-configuration` advertises as
+`post_logout_redirect_uris_supported`, so the published document and the enforced
+behaviour cannot drift apart.
+
+[rp-logout]: https://openid.net/specs/openid-connect-rpinitiated-1_0.html
+
 ### What the command will and will not change
 
 | Situation                                                         | Result                                      |
 | ----------------------------------------------------------------- | ------------------------------------------- |
 | Client absent                                                     | Registered                                  |
-| `_NAME` or `_REDIRECT_URIS` differ                                | Updated to match the environment            |
+| `_NAME`, `_REDIRECT_URIS` or `_POST_LOGOUT_REDIRECT_URIS` differ  | Updated to match the environment            |
 | `_SECRET` differs                                                 | **Refused.** Needs `--rotate-secret=<slug>` |
 | Client has grants beyond `authorization_code` and `refresh_token` | **Refused**, never repaired                 |
 | Client is revoked, or has an owner                                | **Refused**, never repaired                 |
